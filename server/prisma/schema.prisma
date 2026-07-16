@@ -1,0 +1,171 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Seafood {
+  id          String             @id
+  name        String
+  category    String
+  unit        String             @default("kg")
+  description String?
+  img         String?
+  status      String             @default("Active")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  purchaseItems PurchaseBillItem[]
+  exportItems   ExportBillItem[]
+}
+
+model DailyRate {
+  id           Int      @id @default(autoincrement())
+  seafoodId    String
+  name         String
+  purchaseRate Float
+  sellingRate  Float
+  date         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([seafoodId])
+}
+
+model Fisherman {
+  id             String         @id
+  name           String
+  countryCode    String         @default("+91")
+  mobileNumber   String
+  phone          String         // full formatted number
+  whatsappNumber String
+  village        String         @default("N/A")
+  bankDetails    String         @default("N/A")
+  outstanding    Float          @default(0)
+  totalPurchases Float          @default(0)
+  totalBills     Int            @default(0)
+  status         String         @default("Active")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  purchaseBills  PurchaseBill[]
+}
+
+model ExportCompany {
+  id             String       @id
+  name           String
+  address        String
+  gst            String
+  countryCode    String       @default("+91")
+  mobileNumber   String
+  phone          String
+  whatsappNumber String
+  email          String
+  contactPerson  String?
+  outstanding    Float        @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  exportBills    ExportBill[]
+}
+
+model PurchaseBill {
+  id           String             @id
+  fishermanId  String
+  fisherman    Fisherman          @relation(fields: [fishermanId], references: [id])
+  date         String
+  grandTotal   Float
+  paymentMode  String             @default("Cash")
+  remarks      String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  items        PurchaseBillItem[]
+
+  @@index([fishermanId])
+}
+
+model PurchaseBillItem {
+  id             Int          @id @default(autoincrement())
+  purchaseBillId String
+  purchaseBill   PurchaseBill @relation(fields: [purchaseBillId], references: [id], onDelete: Cascade)
+  seafoodId      String
+  seafood        Seafood      @relation(fields: [seafoodId], references: [id])
+  rate           Float
+  weight         Float
+  total          Float
+
+  @@index([purchaseBillId])
+  @@index([seafoodId])
+}
+
+model ExportBill {
+  id              String           @id
+  exportCompanyId String
+  exportCompany   ExportCompany    @relation(fields: [exportCompanyId], references: [id])
+  date            String
+  subTotal        Float
+  tax             Float
+  transport       Float
+  packing         Float
+  netTotal        Float
+  remarks         String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  items           ExportBillItem[]
+
+  @@index([exportCompanyId])
+}
+
+model ExportBillItem {
+  id           Int        @id @default(autoincrement())
+  exportBillId String
+  exportBill   ExportBill @relation(fields: [exportBillId], references: [id], onDelete: Cascade)
+  seafoodId    String
+  seafood      Seafood    @relation(fields: [seafoodId], references: [id])
+  rate         Float
+  weight       Float
+  total        Float
+
+  @@index([exportBillId])
+  @@index([seafoodId])
+}
+
+model Expense {
+  id        String   @id
+  category  String
+  amount    Float
+  remarks   String?
+  date      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String
+  userId    String?
+  details   String?
+  deviceId  String?
+  timestamp DateTime @default(now())
+}
+
+model Settings {
+  key          String @id @default("config")
+  businessName String
+  logo         String
+  gstNumber    String
+  address      String
+  phone        String
+  whatsapp     String
+  currency     String
+}
