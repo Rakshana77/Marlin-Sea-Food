@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../db/localDb';
+import { localDb } from '../db/dexieDb';
 import { BarChart3, FileSpreadsheet, Download, FileText, ChevronRight, Calendar, ArrowUpRight } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid } from 'recharts';
 
@@ -20,39 +20,41 @@ export default function Reports() {
   });
 
   useEffect(() => {
-    const purchases = db.get('purchase_bills');
-    const exports = db.get('export_bills');
-    const exps = db.get('expenses');
+    const loadReportData = async () => {
+      const purchases = await localDb.purchaseBills.toArray();
+      const exports = await localDb.exportBills.toArray();
+      const exps = await localDb.expenses.toArray();
 
-    setPurchaseBills(purchases);
-    setExportBills(exports);
-    setExpenses(exps);
+      setPurchaseBills(purchases);
+      setExportBills(exports);
+      setExpenses(exps);
 
-    const purchaseTotal = purchases.reduce((sum, b) => sum + b.grandTotal, 0);
-    const salesTotal = exports.reduce((sum, b) => sum + b.netTotal, 0);
-    const expenseTotal = exps.reduce((sum, e) => sum + e.amount, 0);
-    
-    // Profit metrics
-    const grossProfit = salesTotal - purchaseTotal;
-    const netProfit = grossProfit - expenseTotal;
+      const purchaseTotal = purchases.reduce((sum, b) => sum + b.grandTotal, 0);
+      const salesTotal = exports.reduce((sum, b) => sum + b.netTotal, 0);
+      const expenseTotal = exps.reduce((sum, e) => sum + e.amount, 0);
+      
+      const grossProfit = salesTotal - purchaseTotal;
+      const netProfit = grossProfit - expenseTotal;
 
-    const totalKgPurchased = purchases.reduce((sum, b) => {
-      return sum + b.items.reduce((itemSum, item) => itemSum + parseFloat(item.weight || 0), 0);
-    }, 0);
+      const totalKgPurchased = purchases.reduce((sum, b) => {
+        return sum + b.items.reduce((itemSum, item) => itemSum + parseFloat(item.weight || 0), 0);
+      }, 0);
 
-    const totalKgExported = exports.reduce((sum, b) => {
-      return sum + b.items.reduce((itemSum, item) => itemSum + parseFloat(item.weight || 0), 0);
-    }, 0);
+      const totalKgExported = exports.reduce((sum, b) => {
+        return sum + b.items.reduce((itemSum, item) => itemSum + parseFloat(item.weight || 0), 0);
+      }, 0);
 
-    setStats({
-      purchaseTotal,
-      salesTotal,
-      expenseTotal,
-      grossProfit,
-      netProfit,
-      totalKgPurchased,
-      totalKgExported
-    });
+      setStats({
+        purchaseTotal,
+        salesTotal,
+        expenseTotal,
+        grossProfit,
+        netProfit,
+        totalKgPurchased,
+        totalKgExported
+      });
+    };
+    loadReportData();
   }, []);
 
   const monthlyTrend = [
