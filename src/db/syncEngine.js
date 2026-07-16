@@ -39,6 +39,12 @@ export const triggerSyncEngine = async () => {
       const payload = item.payload;
       const targetTable = mapLocalTableToSupabase(item.table);
 
+      if (item.table === 'settings') {
+        // Skip local settings config sync
+        await localDb.syncQueue.delete(item.id);
+        continue;
+      }
+
       if (item.action === 'delete') {
         const { error } = await supabase.from(targetTable).delete().eq('id', item.recordId);
         if (error) throw error;
