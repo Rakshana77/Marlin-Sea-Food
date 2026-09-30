@@ -1,10 +1,10 @@
 // MobileBottomNav Component - Sticky Bottom Navigation & FAB
 export function renderMobileNav(currentRoute) {
   const tabs = [
+    { id: 'pos', label: 'POS', icon: 'point_of_sale' },
     { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' },
     { id: 'purchase-bills', label: 'Billing', icon: 'receipt_long' },
     { id: 'daily-rates', label: 'Rates', icon: 'show_chart' },
-    { id: 'seafood-master', label: 'Seafood', icon: 'set_meal' },
     { id: 'more', label: 'More', icon: 'apps' }
   ];
 

@@ -5,7 +5,8 @@ export function renderSidebar(currentRoute) {
   const state = store.getState();
 
   const navItems = [
-    { section: null, items: [
+    { section: 'Operations Terminal', items: [
+      { id: 'pos', label: 'Point of Sale', icon: 'point_of_sale' },
       { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' }
     ]},
     { section: 'Billing & Trade', items: [

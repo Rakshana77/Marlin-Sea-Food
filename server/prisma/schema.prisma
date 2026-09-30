@@ -1,0 +1,523 @@
+// Prisma Schema for Marlin Sea Food ERP System
+// Configured for Supabase PostgreSQL with Connection Pooling & Direct Migration URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------------------
+// Enums
+// --------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum MasterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DailyRateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PurchaseBillStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CREDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum SaleStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+enum StockMovementType {
+  SALE
+  PURCHASE
+  EXPORT
+  ADJUSTMENT
+  RETURN
+  WASTE
+}
+
+// --------------------------------------------------
+// System Health & Diagnostics
+// --------------------------------------------------
+
+model SystemHealth {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// --------------------------------------------------
+// 1. Roles & Permissions (RBAC)
+// --------------------------------------------------
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       User[]
+  permissions RolePermission[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  module      String
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  roles       RolePermission[]
+
+  @@index([code])
+  @@index([module])
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+// --------------------------------------------------
+// 2. Users
+// --------------------------------------------------
+
+model User {
+  id                    String          @id @default(uuid())
+  name                  String
+  email                 String          @unique
+  passwordHash          String
+  roleId                String
+  status                UserStatus      @default(ACTIVE)
+  lastLoginAt           DateTime?
+  deletedAt             DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  role                  Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  dailyRatesPublished   DailyRate[]     @relation("DailyRatePublishedBy")
+  dailyRatesCreated     DailyRate[]     @relation("DailyRateCreatedBy")
+  dailyRatesUpdated     DailyRate[]     @relation("DailyRateUpdatedBy")
+  purchaseBillsCreated  PurchaseBill[]  @relation("PurchaseBillCreatedBy")
+  purchaseBillsUpdated  PurchaseBill[]  @relation("PurchaseBillUpdatedBy")
+    salesCreated          Sale[]          @relation("SaleCreatedBy")
+    salesUpdated          Sale[]          @relation("SaleUpdatedBy")
+  paymentsCreated       Payment[]       @relation("PaymentCreatedBy")
+  stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
+
+  @@index([roleId])
+  @@index([status])
+  @@index([email])
+}
+
+// --------------------------------------------------
+// 3. Fishermen
+// --------------------------------------------------
+
+model Fisherman {
+  id               String         @id @default(uuid())
+  name             String
+  countryCode      String         @default("+91")
+  mobileNumber     String
+  boatName         String?
+  boatRegistration String?
+  address          String?
+  notes            String?
+  status           MasterStatus   @default(ACTIVE)
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  purchaseBills    PurchaseBill[]
+
+  @@unique([countryCode, mobileNumber])
+  @@index([name])
+  @@index([mobileNumber])
+  @@index([status])
+}
+
+// --------------------------------------------------
+// 4. Customers
+// --------------------------------------------------
+
+model Customer {
+  id           String       @id @default(uuid())
+  name         String
+  countryCode  String       @default("+91")
+  mobileNumber String
+  email        String?
+  address      String?
+  status       MasterStatus @default(ACTIVE)
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  sales        Sale[]
+
+  @@index([name])
+  @@index([countryCode, mobileNumber])
+  @@index([status])
+}
+
+// --------------------------------------------------
+// 5. Export Companies
+// --------------------------------------------------
+
+model ExportCompany {
+  id            String       @id @default(uuid())
+  companyName   String
+  contactPerson String?
+  countryCode   String       @default("+91")
+  mobileNumber  String?
+  email         String?
+  address       String?
+  taxNumber     String?
+  status        MasterStatus @default(ACTIVE)
+  deletedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([companyName])
+  @@index([status])
+}
+
+// --------------------------------------------------
+// 6. Seafood Category & Grades
+// --------------------------------------------------
+
+model SeafoodCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  active      Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  seafoodList Seafood[]
+
+  @@index([name])
+  @@index([active])
+}
+
+model SeafoodGrade {
+  id                String             @id @default(uuid())
+  name              String             @unique
+  description       String?
+  active            Boolean            @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  dailyRates        DailyRate[]
+  purchaseBillItems PurchaseBillItem[]
+  stocks            Stock[]
+  stockMovements    StockMovement[]
+  saleItems         SaleItem[]
+
+  @@index([name])
+  @@index([active])
+}
+
+// --------------------------------------------------
+// 7. Seafood Master
+// --------------------------------------------------
+
+model Seafood {
+  id                String             @id @default(uuid())
+  name              String
+  categoryId        String
+  unit              String             @default("KG")
+  status            MasterStatus       @default(ACTIVE)
+  description       String?
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  category          SeafoodCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  dailyRates        DailyRate[]
+  purchaseBillItems PurchaseBillItem[]
+  stocks            Stock[]
+  stockMovements    StockMovement[]
+  saleItems         SaleItem[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([status])
+}
+
+// --------------------------------------------------
+// 8. Daily Rates (Pricing Source of Truth)
+// --------------------------------------------------
+
+model DailyRate {
+  id            String          @id @default(uuid())
+  rateDate      DateTime        @db.Date
+  seafoodId     String
+  gradeId       String
+  purchaseRate  Decimal         @db.Decimal(10, 2)
+  sellingRate   Decimal         @db.Decimal(10, 2)
+  status        DailyRateStatus @default(DRAFT)
+  version       Int             @default(1)
+  publishedAt   DateTime?
+  publishedById String?
+  createdById   String?
+  updatedById   String?
+  deletedAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  seafood     Seafood      @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
+  grade       SeafoodGrade @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  publishedBy User?        @relation("DailyRatePublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("DailyRateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?        @relation("DailyRateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([rateDate, seafoodId, gradeId, version])
+  @@index([rateDate])
+  @@index([seafoodId])
+  @@index([gradeId])
+  @@index([status])
+  @@index([rateDate, status])
+  @@index([seafoodId, gradeId, rateDate])
+  @@index([rateDate, seafoodId])
+  @@index([rateDate, gradeId])
+}
+
+// --------------------------------------------------
+// 9. Purchase Billing
+// --------------------------------------------------
+
+model PurchaseBill {
+  id                String             @id @default(uuid())
+  billNumber        String             @unique
+  billDate          DateTime           @db.Date
+  fishermanId       String
+  totalKg           Decimal            @db.Decimal(10, 2)
+  subtotal          Decimal            @db.Decimal(10, 2)
+  discount          Decimal            @default(0.00) @db.Decimal(10, 2)
+  grandTotal        Decimal            @db.Decimal(10, 2)
+  paidAmount        Decimal            @default(0.00) @db.Decimal(10, 2)
+  outstandingAmount Decimal            @default(0.00) @db.Decimal(10, 2)
+  paymentStatus     PaymentStatus      @default(PENDING)
+  status            PurchaseBillStatus @default(POSTED)
+  notes             String?
+  createdById       String?
+  updatedById       String?
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  fisherman Fisherman          @relation(fields: [fishermanId], references: [id], onDelete: Restrict)
+  createdBy User?              @relation("PurchaseBillCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?              @relation("PurchaseBillUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items     PurchaseBillItem[]
+  payments  Payment[]
+
+  @@index([billNumber])
+  @@index([billDate])
+  @@index([fishermanId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([billDate, status])
+  @@index([fishermanId, status])
+}
+
+model PurchaseBillItem {
+  id             String   @id @default(uuid())
+  purchaseBillId String
+  seafoodId      String
+  gradeId        String
+  quantityKg     Decimal  @db.Decimal(10, 2)
+  purchaseRate   Decimal  @db.Decimal(10, 2)
+  amount         Decimal  @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchaseBill PurchaseBill @relation(fields: [purchaseBillId], references: [id], onDelete: Cascade)
+  seafood      Seafood      @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
+  grade        SeafoodGrade @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseBillId])
+  @@index([seafoodId])
+  @@index([gradeId])
+  @@index([purchaseBillId, seafoodId, gradeId])
+}
+
+// --------------------------------------------------
+// 10. Payment (Record-keeping)
+// --------------------------------------------------
+
+model Payment {
+  id              String        @id @default(uuid())
+  purchaseBillId  String?
+  saleId          String?
+  amount          Decimal       @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PAID)
+  paymentDate     DateTime      @default(now())
+  referenceNumber String?
+  notes           String?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  purchaseBill PurchaseBill? @relation(fields: [purchaseBillId], references: [id], onDelete: SetNull)
+  sale         Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([purchaseBillId])
+  @@index([saleId])
+  @@index([paymentStatus])
+  @@index([paymentDate])
+  @@index([paymentMethod])
+}
+
+// --------------------------------------------------
+// 11. Stock & Inventory Management
+// --------------------------------------------------
+
+model Stock {
+  id         String   @id @default(uuid())
+  seafoodId  String
+  gradeId    String
+  quantityKg Decimal  @default(0.00) @db.Decimal(12, 3)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  seafood   Seafood         @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
+  grade     SeafoodGrade    @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  movements StockMovement[]
+
+  @@unique([seafoodId, gradeId])
+  @@index([seafoodId])
+  @@index([gradeId])
+}
+
+model StockMovement {
+  id            String            @id @default(uuid())
+  stockId       String
+  seafoodId     String
+  gradeId       String
+  movementType  StockMovementType
+  quantityKg    Decimal           @db.Decimal(12, 3)
+  balanceBefore Decimal           @db.Decimal(12, 3)
+  balanceAfter  Decimal           @db.Decimal(12, 3)
+  referenceType String
+  referenceId   String?
+  movementDate  DateTime          @default(now())
+  notes         String?
+  createdById   String?
+  createdAt     DateTime          @default(now())
+
+  stock     Stock        @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  seafood   Seafood      @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
+  grade     SeafoodGrade @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  createdBy User?        @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([stockId])
+  @@index([seafoodId])
+  @@index([gradeId])
+  @@index([movementType])
+  @@index([movementDate])
+  @@index([referenceType, referenceId])
+}
+
+
+// --------------------------------------------------
+// 12. Sales POS & Customer Billing
+// --------------------------------------------------
+
+model Sale {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique
+  idempotencyKey String?       @unique
+  saleDate       DateTime      @db.Date
+  customerId     String
+  totalKg        Decimal       @db.Decimal(12, 3)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  discount       Decimal       @default(0.00) @db.Decimal(10, 2)
+  grandTotal     Decimal       @db.Decimal(10, 2)
+  paidAmount     Decimal       @default(0.00) @db.Decimal(10, 2)
+  changeAmount   Decimal       @default(0.00) @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus @default(PENDING)
+  status         SaleStatus    @default(COMPLETED)
+  notes          String?
+  createdById    String?
+  updatedById    String?
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy User?      @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?      @relation("SaleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items     SaleItem[]
+  payments  Payment[]
+
+  @@index([invoiceNumber])
+  @@index([saleDate])
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([saleDate, status])
+  @@index([customerId, status])
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  saleId      String
+  seafoodId   String
+  gradeId     String
+  quantityKg  Decimal  @db.Decimal(12, 3)
+  sellingRate Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sale    Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  seafood Seafood      @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
+  grade   SeafoodGrade @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+
+  @@index([saleId])
+  @@index([seafoodId])
+  @@index([gradeId])
+  @@index([saleId, seafoodId, gradeId])
+}

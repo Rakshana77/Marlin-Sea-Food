@@ -22,6 +22,7 @@ import { renderReportsView, bindReportsEvents } from './views/ReportsView.js';
 import { renderCustomersView, bindCustomersEvents } from './views/CustomersView.js';
 import { renderExportCompaniesView, bindExportCompaniesEvents } from './views/ExportCompaniesView.js';
 import { renderSettingsView, bindSettingsEvents } from './views/SettingsView.js';
+import { renderPosView, bindPosEvents } from './views/PosView.js';
 
 function renderApp() {
   const app = document.getElementById('app');
@@ -32,6 +33,8 @@ function renderApp() {
 
   // View mapping
   const viewRenderers = {
+    'pos': { render: renderPosView, bind: bindPosEvents },
+    'pos-terminal': { render: renderPosView, bind: bindPosEvents },
     'dashboard': { render: renderDashboardView, bind: bindDashboardEvents },
     'purchase-bills': { render: renderPurchaseBillingView, bind: bindPurchaseBillingEvents },
     'export-bills': { render: renderExportBillingView, bind: bindExportBillingEvents },
@@ -71,6 +74,10 @@ function renderApp() {
           </button>
         </div>
         <nav class="flex-1 overflow-y-auto py-3 flex flex-col gap-1">
+          <button data-nav="pos" class="w-full text-left py-2 px-3 rounded-lg text-sm text-secondary-fixed bg-primary font-bold flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">point_of_sale</span>
+            <span>Point of Sale</span>
+          </button>
           <button data-nav="dashboard" class="w-full text-left py-2 px-3 rounded-lg text-sm text-primary-fixed-dim hover:text-white">Dashboard</button>
           <button data-nav="purchase-bills" class="w-full text-left py-2 px-3 rounded-lg text-sm text-primary-fixed-dim hover:text-white">Purchase Bills</button>
           <button data-nav="export-bills" class="w-full text-left py-2 px-3 rounded-lg text-sm text-primary-fixed-dim hover:text-white">Export Bills</button>
