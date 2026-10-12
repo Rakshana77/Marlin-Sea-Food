@@ -27,8 +27,15 @@ export async function posApiFetch(url, options = {}) {
     // Relative fetch failed or network error
   }
 
-  const directUrl = `http://localhost:5000${path.startsWith('/') ? '' : '/'}${path}`;
-  return await fetch(directUrl, options);
+  // Fallback to local port 5000 only in local dev environment
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    const directUrl = `http://localhost:5000${path.startsWith('/') ? '' : '/'}${path}`;
+    try {
+      return await fetch(directUrl, options);
+    } catch (_) {}
+  }
+
+  return await fetch(url, options);
 }
 
 // Local temporary POS state
