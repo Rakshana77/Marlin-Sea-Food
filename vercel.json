@@ -5,6 +5,10 @@
       "root": ".",
       "framework": "vite"
     },
+    "pos": {
+      "root": "mobile-pwa",
+      "framework": "vite"
+    },
     "server": {
       "root": "server",
       "framework": "express"
@@ -15,6 +19,18 @@
       "source": "/api/(.*)",
       "destination": {
         "service": "server"
+      }
+    },
+    {
+      "source": "/pos/(.*)",
+      "destination": {
+        "service": "pos"
+      }
+    },
+    {
+      "source": "/pos",
+      "destination": {
+        "service": "pos"
       }
     },
     {
