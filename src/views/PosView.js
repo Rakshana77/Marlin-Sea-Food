@@ -3,6 +3,7 @@ import { store } from '../state/store.js';
 import { openPosReceiptModal } from '../components/PosReceiptModal.js';
 import { openPosCustomerModal } from '../components/PosCustomerModal.js';
 import { showToast } from '../components/Toast.js';
+import { printThermalReceipt } from '../utils/receiptPrinter.js';
 
 // Robust API fetch helper: tries /api first, falls back to port 5000 if dev proxy is inactive
 export async function posApiFetch(url, options = {}) {
@@ -36,39 +37,18 @@ let posState = {
   searchQuery: '',
   selectedCategory: 'all',
   activeItem: null,
-  activeWeight: '2.750',
-  manifest: [
-    {
-      id: 'item-1',
-      seafoodId: 'b01930bf-6a18-4cfb-b1d1-3ce759f90eff',
-      seafoodName: 'Squid (Grade A)',
-      gradeId: 'a1ba4960-e047-4ed7-8ed4-393c470aeb59',
-      gradeName: 'Grade A',
-      quantityKg: '2.750',
-      sellingRate: '470.00',
-      amount: '1292.50'
-    },
-    {
-      id: 'item-2',
-      seafoodId: '5fce3e40-c261-4895-a93f-4819ffbde7d0',
-      seafoodName: 'Blue Sea Crab (Live)',
-      gradeId: 'a1ba4960-e047-4ed7-8ed4-393c470aeb59',
-      gradeName: 'Grade A Live',
-      quantityKg: '1.500',
-      sellingRate: '700.00',
-      amount: '1050.00'
-    }
-  ],
+  activeWeight: '2.500',
+  manifest: [],
   customer: {
     id: 'walk-in',
-    name: 'Walk-in Counter Customer',
-    tier: 'Cash Retail Tier-1',
+    name: 'Direct Buyer',
+    tier: 'Wholesale Trade',
     mobile: ''
   },
-  discount: '100.00',
+  discount: '0.00',
   paymentMethod: 'CASH',
-  tenderedCashPreset: '2500.00',
-  customCashReceived: '2500.00',
+  tenderedCashPreset: 'exact',
+  customCashReceived: '0.00',
   isSubmitting: false,
   autoCutSlip: true,
   autoWhatsApp: true,
@@ -81,13 +61,27 @@ let posState = {
 // Default catalog based on Stitch design specifications
 const defaultCatalog = [
   {
+    id: 'seer-fish-vanjaram',
+    seafoodId: '68d2835b-a5b6-4528-af01-ba7ac716521c',
+    name: 'Seer Fish (Vanjaram)',
+    scientific: 'Scomberomorus commerson',
+    category: 'fish',
+    lot: 'SF-01',
+    grade: 'Grade A',
+    gradeId: 'a1ba4960-e047-4ed7-8ed4-393c470aeb59',
+    availableKg: '65.0',
+    sellingRate: '850.00',
+    status: 'AVAILABLE'
+  },
+  {
     id: 'squid-a',
-    seafoodId: 'squid',
+    seafoodId: 'b01930bf-6a18-4cfb-b1d1-3ce759f90eff',
     name: 'Squid (Grade A)',
     scientific: 'Loligo Vulgaris',
     category: 'squid',
     lot: 'SQ-901',
     grade: 'Grade A',
+    gradeId: 'a1ba4960-e047-4ed7-8ed4-393c470aeb59',
     availableKg: '125.0',
     sellingRate: '470.00',
     status: 'AVAILABLE'
@@ -355,7 +349,7 @@ export function renderPosView() {
           </div>
           <div class="inline-flex items-center gap-1 px-space-xs py-0.5 rounded bg-surface-container-lowest shadow-sm cursor-pointer" data-hotkey="F8">
             <kbd class="font-label-numeric text-[11px] font-bold text-on-surface bg-surface-container-highest px-1.5 py-0.2 rounded">F8</kbd>
-            <span class="font-body-sm text-body-sm text-on-surface font-medium">Customer</span>
+            <span class="font-body-sm text-body-sm text-on-surface font-medium">Buyer</span>
           </div>
           <div class="inline-flex items-center gap-1 px-space-xs py-0.5 rounded bg-surface-container-lowest shadow-sm cursor-pointer" data-hotkey="F9">
             <kbd class="font-label-numeric text-[11px] font-bold text-on-surface bg-surface-container-highest px-1.5 py-0.2 rounded">F9</kbd>
@@ -363,14 +357,14 @@ export function renderPosView() {
           </div>
           <div class="inline-flex items-center gap-1 px-space-xs py-0.5 rounded bg-surface-container-lowest shadow-sm cursor-pointer" data-hotkey="F10">
             <kbd class="font-label-numeric text-[11px] font-bold text-on-primary bg-secondary px-1.5 py-0.2 rounded">F10</kbd>
-            <span class="font-body-sm text-body-sm text-secondary font-semibold">Complete Sale</span>
+            <span class="font-body-sm text-body-sm text-secondary font-semibold">Confirm Sale</span>
           </div>
         </div>
 
         <!-- Telemetry Chips -->
         <div class="flex items-center gap-space-sm flex-wrap">
           <div class="flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container-lowest shadow-sm">
-            <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Today's Sales</span>
+            <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Wholesale Sales</span>
             <span class="font-title-md text-title-md text-on-surface font-semibold">₹${posState.todaySales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           <div class="flex items-center gap-space-xs px-space-sm py-1 rounded bg-surface-container-lowest shadow-sm">
@@ -520,10 +514,10 @@ export function renderPosView() {
               </div>
             </div>
 
-            <!-- Add To Cart Execution Trigger -->
+            <!-- Add To Sale Summary Trigger -->
             <button id="add-to-manifest-btn" class="w-full py-2.5 rounded-lg bg-primary text-on-primary font-headline-md text-headline-md tracking-tight flex items-center justify-center gap-2 shadow hover:bg-primary-container transition-colors">
-              <span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
-              <span>Add to Sale Manifest [ENTER]</span>
+              <span class="material-symbols-outlined text-[20px]">receipt_long</span>
+              <span>Add to Sale Summary [ENTER]</span>
             </button>
           </div>
 
@@ -628,7 +622,7 @@ export function renderPosView() {
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-space-xs">
                 <span class="material-symbols-outlined text-secondary text-[20px]">receipt_long</span>
-                <h2 class="font-title-lg text-title-lg text-on-surface font-bold">Current Sale Manifest</h2>
+                <h2 class="font-title-lg text-title-lg text-on-surface font-bold">Current Sale Summary</h2>
               </div>
               <div class="flex items-center gap-1.5">
                 <span class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-label-numeric text-label-numeric font-bold">#${posState.orderNumber}</span>
@@ -636,27 +630,80 @@ export function renderPosView() {
               </div>
             </div>
 
-            <!-- Customer Identity Selector -->
-            <div class="p-space-xs bg-surface-container-low rounded-lg flex items-center justify-between border border-outline-variant/40">
-              <div class="flex items-center gap-space-xs">
-                <div class="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary">
-                  <span class="material-symbols-outlined text-[15px]">person</span>
+            <!-- Buyer Section in Billing -->
+            <div class="p-space-xs bg-surface-container-low rounded-xl flex flex-col gap-2 border border-outline-variant/60 shadow-sm">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-secondary text-[18px]">account_circle</span>
+                  <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold tracking-wider">BUYER</span>
                 </div>
-                <div class="flex flex-col">
-                  <span class="font-title-md text-title-md text-on-surface font-semibold leading-tight">${posState.customer.name}</span>
-                  <span class="font-body-sm text-body-sm text-on-surface-variant">${posState.customer.tier || 'Retail Tier-1'}</span>
-                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${posState.customer.id === 'walk-in' ? 'bg-surface-container-high text-on-surface-variant' : 'bg-primary text-on-primary'}">
+                  ${posState.customer.id === 'walk-in' ? 'DIRECT BUYER' : 'REGISTERED BUYER'}
+                </span>
               </div>
-              <button id="change-customer-btn" class="px-space-xs py-1 rounded bg-surface-container-lowest text-secondary font-title-md text-title-md shadow-sm hover:bg-secondary hover:text-on-secondary transition-colors">
-                + Change (F8)
-              </button>
+
+              <!-- Selected Buyer Card -->
+              <div class="p-2.5 rounded-lg bg-surface-container-lowest border border-outline-variant/40 flex items-center justify-between shadow-xs">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-full ${posState.customer.id === 'walk-in' ? 'bg-surface-container-highest text-on-surface' : 'bg-secondary text-white'} flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                    ${posState.customer.id === 'walk-in' ? '<span class="material-symbols-outlined text-[18px]">person</span>' : (posState.customer.name ? posState.customer.name.slice(0, 2).toUpperCase() : 'BY')}
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-title-md text-sm text-on-surface font-bold leading-tight" id="billing-cust-name-disp">
+                      ${posState.customer.name}
+                    </span>
+                    <span class="font-mono text-xs text-on-surface-variant font-medium" id="billing-cust-phone-disp">
+                      ${(posState.customer.mobile || posState.customer.mobileNumber) ? `+91 ${posState.customer.mobile || posState.customer.mobileNumber}` : (posState.customer.id === 'walk-in' ? 'Direct Wholesale Buyer' : 'No phone recorded')}
+                    </span>
+                  </div>
+                </div>
+                ${posState.customer.id !== 'walk-in' && posState.customer.outstanding ? `
+                  <div class="flex flex-col items-end">
+                    <span class="text-[10px] font-bold uppercase text-outline">Buyer Outstanding</span>
+                    <span class="text-xs font-bold text-amber-700">₹${posState.customer.outstanding}</span>
+                  </div>
+                ` : ''}
+              </div>
+
+              <!-- 3 Direct Buyer Action Buttons -->
+              <div class="grid grid-cols-3 gap-1.5 pt-0.5">
+                <button 
+                  id="billing-walkin-btn" 
+                  type="button" 
+                  class="py-2 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${posState.customer.id === 'walk-in' ? 'bg-secondary text-white shadow-sm ring-1 ring-secondary' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}"
+                  title="Switch to Direct Buyer"
+                >
+                  <span class="material-symbols-outlined text-[15px]">person</span>
+                  <span class="truncate">Direct Buyer</span>
+                </button>
+
+                <button 
+                  id="billing-select-cust-btn" 
+                  type="button" 
+                  class="py-2 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${posState.customer.id !== 'walk-in' ? 'bg-secondary text-white shadow-sm' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}"
+                  title="Search & Select Buyer (F8)"
+                >
+                  <span class="material-symbols-outlined text-[15px]">search</span>
+                  <span class="truncate">Select Buyer</span>
+                </button>
+
+                <button 
+                  id="billing-new-cust-btn" 
+                  type="button" 
+                  class="py-2 px-1 rounded-lg bg-surface-container text-secondary hover:bg-secondary hover:text-white text-xs font-bold flex items-center justify-center gap-1 transition-all border border-secondary/30 shadow-xs"
+                  title="Open New Buyer Form"
+                >
+                  <span class="material-symbols-outlined text-[15px]">person_add</span>
+                  <span class="truncate">+ New Buyer</span>
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- Manifest Items List -->
           <div class="bg-surface-container-lowest rounded-xl shadow-sm p-space-sm flex flex-col gap-space-xs border border-outline-variant/50 min-h-[380px]">
             <div class="flex items-center justify-between text-on-surface-variant font-label-caps text-label-caps px-space-xs pb-1 border-b border-outline-variant/30">
-              <span>ITEM & WEIGHED SPECIFICATION</span>
+              <span>SEAFOOD ITEM & WEIGHED SPECIFICATION</span>
               <span>SUBTOTAL (INR)</span>
             </div>
 
@@ -664,9 +711,9 @@ export function renderPosView() {
             <div class="flex flex-col gap-2 overflow-y-auto max-h-[340px] pr-1">
               ${posState.manifest.length === 0 ? `
                 <div class="py-12 flex flex-col items-center justify-center text-center text-outline gap-2">
-                  <span class="material-symbols-outlined text-4xl text-outline-variant">add_shopping_cart</span>
-                  <p class="text-sm font-medium">Manifest is empty</p>
-                  <p class="text-xs">Select species from catalog and click Add to Sale Manifest</p>
+                  <span class="material-symbols-outlined text-4xl text-outline-variant">receipt_long</span>
+                  <p class="text-sm font-medium">Sale summary is empty</p>
+                  <p class="text-xs">Select seafood species from catalog and click Add to Sale Summary</p>
                 </div>
               ` : posState.manifest.map((item, idx) => `
                 <div class="p-space-sm bg-surface-container-low rounded-lg flex flex-col gap-space-xs border border-outline-variant/40">
@@ -736,20 +783,34 @@ export function renderPosView() {
           
           <!-- Grand Financial Net Payable Card -->
           <div class="p-space-md bg-surface-container-lowest rounded-xl shadow-md flex flex-col gap-space-xs border border-outline-variant/60">
-            <div class="flex items-center justify-between pb-1">
-              <span class="font-title-md text-title-md text-on-surface font-semibold">Bill Summary</span>
+            <div class="flex items-center justify-between pb-1 border-b border-outline-variant/30">
+              <span class="font-headline-sm text-headline-sm text-on-surface font-bold tracking-wide">PAYMENT</span>
               <span class="font-label-caps text-label-caps text-secondary font-bold">GST INCL. (0%)</span>
+            </div>
+
+            <!-- Selected Buyer Info on Payment Screen -->
+            <div class="p-2.5 rounded-lg bg-surface-container-low flex flex-col gap-1 border border-outline-variant/30 my-1">
+              <div class="flex items-center justify-between">
+                <span class="font-label-caps text-[10px] uppercase text-outline font-bold">Buyer:</span>
+                <span class="font-title-md text-xs font-bold text-on-surface">${posState.customer.name}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-label-caps text-[10px] uppercase text-outline font-bold">Phone:</span>
+                <span class="font-mono text-xs font-semibold text-on-surface-variant">
+                  ${(posState.customer.mobile || posState.customer.mobileNumber) ? `+91 ${posState.customer.mobile || posState.customer.mobileNumber}` : (posState.customer.id === 'walk-in' ? 'Direct Buyer' : '—')}
+                </span>
+              </div>
             </div>
             
             <div class="flex items-center justify-between text-on-surface-variant font-body-md text-body-md">
-              <span>Gross Subtotal</span>
+              <span>Subtotal:</span>
               <span class="font-title-md text-title-md text-on-surface tabular-nums">₹${totals.subtotal}</span>
             </div>
 
             <div class="flex items-center justify-between text-on-surface-variant font-body-md text-body-md cursor-pointer" id="discount-trigger-row">
               <div class="flex items-center gap-1">
-                <span>Special Discount (F9)</span>
-                <span class="px-1 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[9px]">PROMO</span>
+                <span>Discount:</span>
+                <span class="px-1 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[9px]">PROMO (F9)</span>
               </div>
               <span class="font-title-md text-title-md text-error tabular-nums">-₹${totals.discount}</span>
             </div>
@@ -757,7 +818,7 @@ export function renderPosView() {
             <!-- Massive High-Impact Total Container -->
             <div class="mt-space-xs p-space-md rounded-xl bg-primary text-on-primary flex flex-col gap-1 shadow-lg relative overflow-hidden">
               <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-secondary-container/20 rounded-full blur-xl pointer-events-none"></div>
-              <span class="font-label-caps text-label-caps text-primary-fixed uppercase tracking-widest">NET AMOUNT PAYABLE</span>
+              <span class="font-label-caps text-label-caps text-primary-fixed uppercase tracking-widest">TOTAL</span>
               <div class="flex items-baseline justify-between mt-1">
                 <span class="font-headline-xl text-headline-xl text-secondary-fixed font-bold tracking-tight tabular-nums">
                   ₹${totals.netPayable}
@@ -773,19 +834,19 @@ export function renderPosView() {
             <div class="grid grid-cols-2 gap-space-xs">
               <button data-tender-method="CASH" class="py-2.5 px-space-xs rounded-lg font-title-md text-title-md flex items-center justify-center gap-1.5 transition-all shadow-sm ${posState.paymentMethod === 'CASH' ? 'bg-secondary text-on-secondary font-bold' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}">
                 <span class="material-symbols-outlined text-[18px]">payments</span>
-                <span>Cash Tender</span>
+                <span>CASH</span>
               </button>
               <button data-tender-method="UPI" class="py-2.5 px-space-xs rounded-lg font-title-md text-title-md flex items-center justify-center gap-1.5 transition-all shadow-sm ${posState.paymentMethod === 'UPI' ? 'bg-secondary text-on-secondary font-bold' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}">
                 <span class="material-symbols-outlined text-[18px]">qr_code_2</span>
-                <span>UPI Instant</span>
+                <span>UPI</span>
               </button>
-              <button data-tender-method="BANK_TRANSFER" class="py-2.5 px-space-xs rounded-lg font-title-md text-title-md flex items-center justify-center gap-1.5 transition-all shadow-sm ${posState.paymentMethod === 'BANK_TRANSFER' ? 'bg-secondary text-on-secondary font-bold' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}">
-                <span class="material-symbols-outlined text-[18px]">account_balance</span>
-                <span>Bank / NEFT</span>
+              <button data-tender-method="CARD" class="py-2.5 px-space-xs rounded-lg font-title-md text-title-md flex items-center justify-center gap-1.5 transition-all shadow-sm ${posState.paymentMethod === 'CARD' ? 'bg-secondary text-on-secondary font-bold' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}">
+                <span class="material-symbols-outlined text-[18px]">credit_card</span>
+                <span>CARD</span>
               </button>
               <button data-tender-method="CREDIT" class="py-2.5 px-space-xs rounded-lg font-title-md text-title-md flex items-center justify-center gap-1.5 transition-all shadow-sm ${posState.paymentMethod === 'CREDIT' ? 'bg-secondary text-on-secondary font-bold' : 'bg-surface-container text-on-surface hover:bg-surface-container-high'}">
-                <span class="material-symbols-outlined text-[18px]">credit_card</span>
-                <span>Store Credit</span>
+                <span class="material-symbols-outlined text-[18px]">receipt</span>
+                <span>CREDIT</span>
               </button>
             </div>
 
@@ -826,7 +887,7 @@ export function renderPosView() {
                 <div class="p-space-sm rounded-lg bg-secondary-container text-on-secondary-container flex items-center justify-between shadow-sm">
                   <div class="flex flex-col">
                     <span class="font-label-caps text-label-caps uppercase font-bold tracking-wider">CHANGE TO RETURN</span>
-                    <span class="font-body-sm text-body-sm">Balance to Customer</span>
+                    <span class="font-body-sm text-body-sm">Balance to Buyer</span>
                   </div>
                   <span class="font-headline-lg text-headline-lg font-bold tabular-nums" id="change-due-display">
                     ₹${changeToReturn}
@@ -836,21 +897,21 @@ export function renderPosView() {
             ` : `
               <div class="p-space-sm bg-surface-container-low rounded-xl flex flex-col gap-2 border border-outline-variant/40">
                 <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                  ${posState.paymentMethod === 'UPI' ? 'UPI Instant Settlement' : posState.paymentMethod === 'BANK_TRANSFER' ? 'NEFT / RTGS Transfer Details' : 'Customer Ledger Store Credit'}
+                  ${posState.paymentMethod === 'UPI' ? 'UPI Instant Settlement' : posState.paymentMethod === 'CARD' ? 'Card POS Terminal Settlement' : posState.paymentMethod === 'BANK_TRANSFER' ? 'NEFT / RTGS Transfer Details' : 'Buyer Credit Ledger Account'}
                 </span>
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] uppercase font-semibold text-outline">Reference Number / UTR</label>
+                  <label class="text-[10px] uppercase font-semibold text-outline">Reference Number / UTR / Slip #</label>
                   <input 
                     id="non-cash-ref-input" 
                     type="text" 
-                    placeholder="${posState.paymentMethod === 'UPI' ? 'UPI Txn ID (e.g. 32901923)' : posState.paymentMethod === 'BANK_TRANSFER' ? 'NEFT UTR Number' : 'Credit Authorization Note'}" 
+                    placeholder="${posState.paymentMethod === 'UPI' ? 'UPI Txn ID (e.g. 32901923)' : posState.paymentMethod === 'CARD' ? 'Card Transaction / Approval Code' : posState.paymentMethod === 'BANK_TRANSFER' ? 'NEFT UTR Number' : 'Credit Authorization Note'}" 
                     class="w-full px-3 py-1.5 rounded-lg bg-surface-container-lowest text-xs font-mono border border-outline-variant/60 focus:outline-none"
                   />
                 </div>
                 ${posState.paymentMethod === 'CREDIT' && posState.customer.id === 'walk-in' ? `
                   <div class="p-2 rounded bg-error-container text-on-error-container text-xs flex items-center gap-1.5 font-medium">
                     <span class="material-symbols-outlined text-[16px]">warning</span>
-                    <span>Store Credit requires registered customer. Walk-in not permitted.</span>
+                    <span>Please select a buyer for credit billing.</span>
                   </div>
                 ` : ''}
               </div>
@@ -862,8 +923,8 @@ export function renderPosView() {
               ${posState.isSubmitting ? 'disabled' : ''}
               class="w-full py-4 rounded-xl bg-secondary text-on-secondary font-headline-md text-headline-md tracking-tight flex items-center justify-center gap-2 shadow-lg hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span class="material-symbols-outlined text-[24px]">print</span>
-              <span>${posState.isSubmitting ? 'Completing sale...' : 'COMPLETE SALE & PRINT (F10)'}</span>
+              <span class="material-symbols-outlined text-[24px]">task_alt</span>
+              <span>${posState.isSubmitting ? 'Confirming sale...' : 'CONFIRM SALE (F10)'}</span>
             </button>
 
             <!-- Automation Checkboxes & Secondary Reset -->
@@ -1140,10 +1201,44 @@ export function bindPosEvents() {
     });
   });
 
-  // 7. Customer Selector Modal
-  container.querySelector('#change-customer-btn')?.addEventListener('click', () => {
-    openPosCustomerModal(posState.customer.id, (cust) => {
-      posState.customer = cust;
+  // 7. Buyer Actions in Billing Workflow
+  container.querySelector('#billing-walkin-btn')?.addEventListener('click', () => {
+    posState.customer = {
+      id: 'walk-in',
+      name: 'Direct Buyer',
+      tier: 'Wholesale Trade',
+      mobile: ''
+    };
+    showToast('Switched to Direct Buyer');
+    reRender();
+  });
+
+  container.querySelector('#billing-select-cust-btn')?.addEventListener('click', () => {
+    openPosCustomerModal({ currentCustomerId: posState.customer.id, initialTab: 'search' }, (cust) => {
+      posState.customer = {
+        id: cust.id,
+        name: cust.name,
+        mobile: cust.mobile || cust.mobileNumber || '',
+        mobileNumber: cust.mobile || cust.mobileNumber || '',
+        tier: cust.tier || 'Registered Account',
+        outstanding: cust.outstanding || 0
+      };
+      showToast(`Buyer selected: ${cust.name}`);
+      reRender();
+    });
+  });
+
+  container.querySelector('#billing-new-cust-btn')?.addEventListener('click', () => {
+    openPosCustomerModal({ currentCustomerId: posState.customer.id, initialTab: 'create' }, (cust) => {
+      posState.customer = {
+        id: cust.id,
+        name: cust.name,
+        mobile: cust.mobile || cust.mobileNumber || '',
+        mobileNumber: cust.mobile || cust.mobileNumber || '',
+        tier: cust.tier || 'Registered Account',
+        outstanding: cust.outstanding || 0
+      };
+      showToast(`Buyer registered and attached: ${cust.name}`);
       reRender();
     });
   });
@@ -1165,7 +1260,26 @@ export function bindPosEvents() {
   // 9. Payment Method Tenders
   container.querySelectorAll('[data-tender-method]').forEach(btn => {
     btn.addEventListener('click', () => {
-      posState.paymentMethod = btn.dataset.tenderMethod;
+      const method = btn.dataset.tenderMethod;
+      if (method === 'CREDIT' && posState.customer.id === 'walk-in') {
+        alert('Please select a customer for credit billing.');
+        showToast('Please select a customer for credit billing.', 'error');
+        openPosCustomerModal({ currentCustomerId: posState.customer.id, initialTab: 'search' }, (cust) => {
+          posState.customer = {
+            id: cust.id,
+            name: cust.name,
+            mobile: cust.mobile || cust.mobileNumber || '',
+            mobileNumber: cust.mobile || cust.mobileNumber || '',
+            tier: cust.tier || 'Registered Account',
+            outstanding: cust.outstanding || 0
+          };
+          posState.paymentMethod = 'CREDIT';
+          showToast(`Customer selected for credit billing: ${cust.name}`);
+          reRender();
+        });
+        return;
+      }
+      posState.paymentMethod = method;
       reRender();
     });
   });
@@ -1207,18 +1321,30 @@ export function bindPosEvents() {
     }
   });
 
-  // COMPLETE SALE (F10)
+  // CONFIRM SALE (F10)
   const completeBtn = container.querySelector('#complete-sale-btn');
   completeBtn?.addEventListener('click', async () => {
     if (posState.isSubmitting) return;
 
     if (posState.manifest.length === 0) {
-      alert('Sale manifest is empty! Please add seafood lots before checkout.');
+      alert('Sale summary is empty! Please add seafood items before confirming sale.');
       return;
     }
 
     if (posState.paymentMethod === 'CREDIT' && posState.customer.id === 'walk-in') {
-      alert('Walk-in Customer cannot buy on credit! Please change customer (F8) to an account customer.');
+      alert('Please select a buyer for credit sale.');
+      showToast('Please select a buyer for credit sale.', 'error');
+      openPosCustomerModal({ currentCustomerId: posState.customer.id, initialTab: 'search' }, (cust) => {
+        posState.customer = {
+          id: cust.id,
+          name: cust.name,
+          mobile: cust.mobile || cust.mobileNumber || '',
+          mobileNumber: cust.mobile || cust.mobileNumber || '',
+          tier: cust.tier || 'Registered Account',
+          outstanding: cust.outstanding || 0
+        };
+        reRender();
+      });
       return;
     }
 
@@ -1228,11 +1354,11 @@ export function bindPosEvents() {
     completeBtn.disabled = true;
     completeBtn.innerHTML = `
       <span class="inline-block animate-spin mr-2">&#9696;</span>
-      <span>Completing sale...</span>
+      <span>Confirming sale...</span>
     `;
 
     const salePayload = {
-      customerId: posState.customer.id === 'walk-in' ? undefined : posState.customer.id,
+      customerId: (posState.customer.id && posState.customer.id !== 'walk-in') ? posState.customer.id : undefined,
       saleDate: new Date().toISOString().split('T')[0],
       items: posState.manifest.map(m => ({
         seafoodId: m.seafoodId,
@@ -1241,7 +1367,7 @@ export function bindPosEvents() {
       })),
       discount: totals.discount,
       payment: {
-        method: posState.paymentMethod,
+        method: posState.paymentMethod === 'CARD' ? 'BANK_TRANSFER' : posState.paymentMethod,
         amount: posState.paymentMethod === 'CASH' ? posState.customCashReceived : totals.netPayable,
         referenceNumber: container.querySelector('#non-cash-ref-input')?.value || undefined
       },
@@ -1257,7 +1383,7 @@ export function bindPosEvents() {
 
       if (!resp.ok) {
         const errJson = await resp.json().catch(() => ({}));
-        let errorMsg = errJson.message || 'Sale completion failed';
+        let errorMsg = errJson.message || 'Sale confirmation failed';
         if (errJson.details) {
           if (errJson.details.availableKg && errJson.details.requestedKg) {
             errorMsg = `Insufficient stock for ${errJson.details.seafood || 'seafood'}. Available: ${errJson.details.availableKg} KG, Requested: ${errJson.details.requestedKg} KG.`;
@@ -1270,8 +1396,8 @@ export function bindPosEvents() {
         posState.isSubmitting = false;
         completeBtn.disabled = false;
         completeBtn.innerHTML = `
-          <span class="material-symbols-outlined text-[24px]">print</span>
-          <span>COMPLETE SALE &amp; PRINT (F10)</span>
+          <span class="material-symbols-outlined text-[24px]">task_alt</span>
+          <span>CONFIRM SALE (F10)</span>
         `;
         return;
       }
@@ -1293,15 +1419,15 @@ export function bindPosEvents() {
 
       if (posState.autoCutSlip) {
         setTimeout(() => {
-          window.print();
+          printThermalReceipt('thermal-receipt-print-area');
         }, 300);
       }
 
-      showToast(`Sale completed! Invoice ${result.invoiceNumber}`);
+      showToast('Wholesale Sale Recorded Successfully');
 
     } catch (err) {
       console.error('POS sale transaction failed:', err);
-      const msg = err.message || 'Network connection failed during sale completion';
+      const msg = err.message || 'Network connection failed during sale confirmation';
       alert(`Sale Error: ${msg}`);
       showToast(`Sale Error: ${msg}`, 'error');
     } finally {
@@ -1309,8 +1435,8 @@ export function bindPosEvents() {
       if (completeBtn) {
         completeBtn.disabled = false;
         completeBtn.innerHTML = `
-          <span class="material-symbols-outlined text-[24px]">print</span>
-          <span>COMPLETE SALE &amp; PRINT (F10)</span>
+          <span class="material-symbols-outlined text-[24px]">task_alt</span>
+          <span>COMPLETE BILL (F10)</span>
         `;
       }
     }
@@ -1326,7 +1452,7 @@ export function bindPosEvents() {
       container.querySelector('#auto-capture-scale-btn')?.click();
     } else if (e.key === 'F8') {
       e.preventDefault();
-      container.querySelector('#change-customer-btn')?.click();
+      container.querySelector('#billing-select-cust-btn')?.click();
     } else if (e.key === 'F9') {
       e.preventDefault();
       container.querySelector('#discount-trigger-row')?.click();

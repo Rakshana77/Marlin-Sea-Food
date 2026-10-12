@@ -28,6 +28,12 @@ export class CustomerRepository extends BaseRepository {
     });
   }
 
+  async findFirst(where?: Prisma.CustomerWhereInput): Promise<Customer | null> {
+    return this.db.customer.findFirst({
+      where: { deletedAt: null, ...where }
+    });
+  }
+
   async create(data: Prisma.CustomerCreateInput): Promise<Customer> {
     return this.db.customer.create({ data });
   }

@@ -56,26 +56,127 @@
   animation: fadeIn 0.2s ease-out forwards;
 }
 
-/* Print Styles for 80mm ESC/POS Thermal Receipt */
+/* ========================================================================= */
+/* Print Styles for 80mm ESC/POS Thermal Receipt & Bill Slips                */
+/* ========================================================================= */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    size: 80mm auto;
+    margin: 0;
   }
-  #thermal-receipt-print-area, #thermal-receipt-print-area * {
-    visibility: visible;
-  }
-  #thermal-receipt-print-area {
-    position: fixed;
-    left: 0;
-    top: 0;
+
+  html, body {
     width: 80mm !important;
+    min-width: 80mm !important;
     max-width: 80mm !important;
-    padding: 2mm !important;
     margin: 0 !important;
-    font-family: monospace !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Completely remove the main application, sidebars, navigations from print flow */
+  #app,
+  header,
+  nav,
+  aside,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Reset modal containers so they don't clip, blur or animate */
+  #modal-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #pos-receipt-modal,
+  #thermal-receipt-modal {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    animation: none !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  #pos-receipt-modal > div,
+  #thermal-receipt-modal > div {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    animation: none !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  .receipt-paper-wrapper {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    width: 100% !important;
+  }
+
+  /* Hide modal buttons and headers */
+  #close-pos-receipt-btn,
+  #print-pos-slip-btn,
+  #new-pos-sale-btn,
+  #close-receipt-btn,
+  #print-slip-btn,
+  #whatsapp-slip-btn,
+  #pdf-slip-btn,
+  #dismiss-modal-btn {
+    display: none !important;
+  }
+
+  /* The actual thermal receipt printable area */
+  #thermal-receipt-print-area,
+  #pos-thermal-print-area,
+  .thermal-receipt-printable {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 auto !important;
+    padding: 3mm 1mm !important;
+    font-family: monospace, 'Courier New', Courier !important;
     font-size: 11px !important;
     line-height: 1.25 !important;
     color: #000000 !important;
     background: #ffffff !important;
+  }
+
+  #thermal-receipt-print-area *,
+  #pos-thermal-print-area *,
+  .thermal-receipt-printable * {
+    visibility: visible !important;
+    color: #000000 !important;
+    background: transparent !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

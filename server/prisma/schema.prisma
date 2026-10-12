@@ -67,6 +67,73 @@ enum StockMovementType {
   WASTE
 }
 
+enum SaleType {
+  WHOLESALE
+  EXPORT
+}
+
+enum AdvancePaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+}
+
+enum AdvanceStatus {
+  ACTIVE
+  FULLY_RECOVERED
+  WRITTEN_OFF
+  CANCELLED
+}
+
+enum AdvanceEntryType {
+  DISBURSEMENT
+  RECOVERY_DEDUCTION
+  RECOVERY_REVERSAL
+  CASH_REPAYMENT
+  WRITE_OFF
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum ExpenseCategory {
+  ICE
+  DIESEL_FUEL
+  COOLIE_WAGES
+  PACKING
+  ELECTRICITY
+  MAINTENANCE
+  SALARY
+  OTHER
+  WORKER_WAGE
+  TRANSPORT
+  FUEL
+  PACKAGING
+  LOADING_UNLOADING
+  RENT
+  CLEANING
+  OFFICE
+}
+
+enum ExpensePaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+}
+
+enum ExpenseStatus {
+  RECORDED
+  CANCELLED
+}
+
+enum DayEndStatus {
+  OPEN
+  CLOSED
+  REOPENED
+}
+
 // --------------------------------------------------
 // System Health & Diagnostics
 // --------------------------------------------------
@@ -126,26 +193,32 @@ model RolePermission {
 // --------------------------------------------------
 
 model User {
-  id                    String          @id @default(uuid())
-  name                  String
-  email                 String          @unique
-  passwordHash          String
-  roleId                String
-  status                UserStatus      @default(ACTIVE)
-  lastLoginAt           DateTime?
-  deletedAt             DateTime?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-  role                  Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  dailyRatesPublished   DailyRate[]     @relation("DailyRatePublishedBy")
-  dailyRatesCreated     DailyRate[]     @relation("DailyRateCreatedBy")
-  dailyRatesUpdated     DailyRate[]     @relation("DailyRateUpdatedBy")
-  purchaseBillsCreated  PurchaseBill[]  @relation("PurchaseBillCreatedBy")
-  purchaseBillsUpdated  PurchaseBill[]  @relation("PurchaseBillUpdatedBy")
-    salesCreated          Sale[]          @relation("SaleCreatedBy")
-    salesUpdated          Sale[]          @relation("SaleUpdatedBy")
-  paymentsCreated       Payment[]       @relation("PaymentCreatedBy")
-  stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
+  id                          String                   @id @default(uuid())
+  name                        String
+  email                       String                   @unique
+  passwordHash                String
+  roleId                      String
+  status                      UserStatus               @default(ACTIVE)
+  lastLoginAt                 DateTime?
+  deletedAt                   DateTime?
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  role                        Role                     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  dailyRatesPublished         DailyRate[]              @relation("DailyRatePublishedBy")
+  dailyRatesCreated           DailyRate[]              @relation("DailyRateCreatedBy")
+  dailyRatesUpdated           DailyRate[]              @relation("DailyRateUpdatedBy")
+  purchaseBillsCreated        PurchaseBill[]           @relation("PurchaseBillCreatedBy")
+  purchaseBillsUpdated        PurchaseBill[]           @relation("PurchaseBillUpdatedBy")
+  salesCreated                Sale[]                   @relation("SaleCreatedBy")
+  salesUpdated                Sale[]                   @relation("SaleUpdatedBy")
+  paymentsCreated             Payment[]                @relation("PaymentCreatedBy")
+  stockMovementsCreated       StockMovement[]          @relation("StockMovementCreatedBy")
+  advancesCreated             FishermanAdvance[]       @relation("AdvanceCreatedBy")
+  advanceLedgerEntriesCreated FishermanAdvanceLedger[] @relation("AdvanceLedgerCreatedBy")
+  expensesCreated             Expense[]                @relation("ExpenseCreatedBy")
+  expensesCancelled           Expense[]                @relation("ExpenseCancelledBy")
+  dayEndsClosed               DayEndClosing[]          @relation("DayEndClosedBy")
+  dayEndsReopened             DayEndClosing[]          @relation("DayEndReopenedBy")
 
   @@index([roleId])
   @@index([status])
@@ -157,19 +230,21 @@ model User {
 // --------------------------------------------------
 
 model Fisherman {
-  id               String         @id @default(uuid())
-  name             String
-  countryCode      String         @default("+91")
-  mobileNumber     String
-  boatName         String?
-  boatRegistration String?
-  address          String?
-  notes            String?
-  status           MasterStatus   @default(ACTIVE)
-  deletedAt        DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  purchaseBills    PurchaseBill[]
+  id                   String                   @id @default(uuid())
+  name                 String
+  countryCode          String                   @default("+91")
+  mobileNumber         String
+  boatName             String?
+  boatRegistration     String?
+  address              String?
+  notes                String?
+  status               MasterStatus             @default(ACTIVE)
+  deletedAt            DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  purchaseBills        PurchaseBill[]
+  advances             FishermanAdvance[]
+  advanceLedgerEntries FishermanAdvanceLedger[]
 
   @@unique([countryCode, mobileNumber])
   @@index([name])
@@ -216,6 +291,7 @@ model ExportCompany {
   deletedAt     DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+  sales         Sale[]
 
   @@index([companyName])
   @@index([status])
@@ -322,7 +398,7 @@ model DailyRate {
 }
 
 // --------------------------------------------------
-// 9. Purchase Billing
+// 9. Purchase Billing (Procurement Catch Intake)
 // --------------------------------------------------
 
 model PurchaseBill {
@@ -330,10 +406,14 @@ model PurchaseBill {
   billNumber        String             @unique
   billDate          DateTime           @db.Date
   fishermanId       String
+  totalGrossKg      Decimal            @default(0.00) @db.Decimal(10, 2)
+  totalTareKg       Decimal            @default(0.00) @db.Decimal(10, 2)
   totalKg           Decimal            @db.Decimal(10, 2)
   subtotal          Decimal            @db.Decimal(10, 2)
   discount          Decimal            @default(0.00) @db.Decimal(10, 2)
   grandTotal        Decimal            @db.Decimal(10, 2)
+  advanceDeducted   Decimal            @default(0.00) @db.Decimal(10, 2)
+  netPayableCash    Decimal            @default(0.00) @db.Decimal(10, 2)
   paidAmount        Decimal            @default(0.00) @db.Decimal(10, 2)
   outstandingAmount Decimal            @default(0.00) @db.Decimal(10, 2)
   paymentStatus     PaymentStatus      @default(PENDING)
@@ -365,6 +445,9 @@ model PurchaseBillItem {
   purchaseBillId String
   seafoodId      String
   gradeId        String
+  cratesCount    Int      @default(1)
+  grossKg        Decimal  @default(0.00) @db.Decimal(10, 2)
+  tareKg         Decimal  @default(0.00) @db.Decimal(10, 2)
   quantityKg     Decimal  @db.Decimal(10, 2)
   purchaseRate   Decimal  @db.Decimal(10, 2)
   amount         Decimal  @db.Decimal(10, 2)
@@ -411,16 +494,18 @@ model Payment {
 }
 
 // --------------------------------------------------
-// 11. Stock & Inventory Management
+// 11. Stock & Inventory Management (Perpetual WAC)
 // --------------------------------------------------
 
 model Stock {
-  id         String   @id @default(uuid())
-  seafoodId  String
-  gradeId    String
-  quantityKg Decimal  @default(0.00) @db.Decimal(12, 3)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(uuid())
+  seafoodId   String
+  gradeId     String
+  quantityKg  Decimal  @default(0.00) @db.Decimal(12, 3)
+  averageCost Decimal  @default(0.00) @db.Decimal(10, 2)
+  totalValue  Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   seafood   Seafood         @relation(fields: [seafoodId], references: [id], onDelete: Restrict)
   grade     SeafoodGrade    @relation(fields: [gradeId], references: [id], onDelete: Restrict)
@@ -440,6 +525,8 @@ model StockMovement {
   quantityKg    Decimal           @db.Decimal(12, 3)
   balanceBefore Decimal           @db.Decimal(12, 3)
   balanceAfter  Decimal           @db.Decimal(12, 3)
+  unitCost      Decimal?          @db.Decimal(10, 2)
+  totalCost     Decimal?          @db.Decimal(12, 2)
   referenceType String
   referenceId   String?
   movementDate  DateTime          @default(now())
@@ -460,41 +547,51 @@ model StockMovement {
   @@index([referenceType, referenceId])
 }
 
-
 // --------------------------------------------------
-// 12. Sales POS & Customer Billing
+// 12. Sales POS & Unified Billing (Wholesale + Export)
 // --------------------------------------------------
 
 model Sale {
-  id             String        @id @default(uuid())
-  invoiceNumber  String        @unique
-  idempotencyKey String?       @unique
-  saleDate       DateTime      @db.Date
-  customerId     String
-  totalKg        Decimal       @db.Decimal(12, 3)
-  subtotal       Decimal       @db.Decimal(10, 2)
-  discount       Decimal       @default(0.00) @db.Decimal(10, 2)
-  grandTotal     Decimal       @db.Decimal(10, 2)
-  paidAmount     Decimal       @default(0.00) @db.Decimal(10, 2)
-  changeAmount   Decimal       @default(0.00) @db.Decimal(10, 2)
-  paymentStatus  PaymentStatus @default(PENDING)
-  status         SaleStatus    @default(COMPLETED)
-  notes          String?
-  createdById    String?
-  updatedById    String?
-  deletedAt      DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id               String        @id @default(uuid())
+  invoiceNumber    String        @unique
+  idempotencyKey   String?       @unique
+  saleDate         DateTime      @db.Date
+  customerId       String?
+  exportCompanyId  String?
+  saleType         SaleType      @default(WHOLESALE)
+  totalKg          Decimal       @db.Decimal(12, 3)
+  subtotal         Decimal       @db.Decimal(10, 2)
+  discount         Decimal       @default(0.00) @db.Decimal(10, 2)
+  taxAmount        Decimal       @default(0.00) @db.Decimal(10, 2)
+  grandTotal       Decimal       @db.Decimal(10, 2)
+  totalCogs        Decimal       @default(0.00) @db.Decimal(12, 2)
+  totalGrossProfit Decimal       @default(0.00) @db.Decimal(12, 2)
+  paidAmount       Decimal       @default(0.00) @db.Decimal(10, 2)
+  changeAmount     Decimal       @default(0.00) @db.Decimal(10, 2)
+  paymentStatus    PaymentStatus @default(PENDING)
+  status           SaleStatus    @default(COMPLETED)
+  exportRef        String?
+  dispatchDate     DateTime?
+  destinationPort  String?
+  notes            String?
+  createdById      String?
+  updatedById      String?
+  deletedAt        DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy User?      @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy User?      @relation("SaleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  items     SaleItem[]
-  payments  Payment[]
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  exportCompany ExportCompany? @relation(fields: [exportCompanyId], references: [id], onDelete: SetNull)
+  createdBy     User?          @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?          @relation("SaleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items         SaleItem[]
+  payments      Payment[]
 
   @@index([invoiceNumber])
   @@index([saleDate])
   @@index([customerId])
+  @@index([exportCompanyId])
+  @@index([saleType])
   @@index([status])
   @@index([paymentStatus])
   @@index([saleDate, status])
@@ -509,6 +606,9 @@ model SaleItem {
   quantityKg  Decimal  @db.Decimal(12, 3)
   sellingRate Decimal  @db.Decimal(10, 2)
   amount      Decimal  @db.Decimal(10, 2)
+  costRate    Decimal  @default(0.00) @db.Decimal(10, 2)
+  cogsAmount  Decimal  @default(0.00) @db.Decimal(12, 2)
+  grossProfit Decimal  @default(0.00) @db.Decimal(12, 2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -520,4 +620,128 @@ model SaleItem {
   @@index([seafoodId])
   @@index([gradeId])
   @@index([saleId, seafoodId, gradeId])
+}
+
+// --------------------------------------------------
+// 13. Fisherman Advance & Revolving Credit Ledger
+// --------------------------------------------------
+
+model FishermanAdvance {
+  id              String               @id @default(uuid())
+  advanceNumber   String               @unique
+  fishermanId     String
+  sanctionDate    DateTime             @db.Date
+  disbursedAmount Decimal              @db.Decimal(12, 2)
+  paymentMethod   AdvancePaymentMethod
+  paymentRef      String?
+  status          AdvanceStatus        @default(ACTIVE)
+  notes           String?
+  createdById     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  fisherman     Fisherman                @relation(fields: [fishermanId], references: [id], onDelete: Restrict)
+  createdBy     User?                    @relation("AdvanceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  ledgerEntries FishermanAdvanceLedger[]
+
+  @@index([advanceNumber])
+  @@index([fishermanId])
+  @@index([sanctionDate])
+  @@index([status])
+}
+
+model FishermanAdvanceLedger {
+  id            String           @id @default(uuid())
+  fishermanId   String
+  advanceId     String?
+  entryType     AdvanceEntryType
+  direction     LedgerDirection
+  amount        Decimal          @db.Decimal(12, 2)
+  balanceBefore Decimal          @db.Decimal(12, 2)
+  balanceAfter  Decimal          @db.Decimal(12, 2)
+  referenceType String
+  referenceId   String?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime         @default(now())
+
+  fisherman Fisherman         @relation(fields: [fishermanId], references: [id], onDelete: Restrict)
+  advance   FishermanAdvance? @relation(fields: [advanceId], references: [id], onDelete: SetNull)
+  createdBy User?             @relation("AdvanceLedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([fishermanId, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([fishermanId])
+  @@index([advanceId])
+}
+
+// --------------------------------------------------
+// 14. Operating Expenses
+// --------------------------------------------------
+
+model Expense {
+  id             String               @id @default(uuid())
+  expenseNumber  String               @unique
+  idempotencyKey String?              @unique
+  expenseDate    DateTime             @db.Date
+  category       ExpenseCategory
+  amount         Decimal              @db.Decimal(10, 2)
+  paymentMethod  ExpensePaymentMethod
+  recipient      String
+  status         ExpenseStatus        @default(RECORDED)
+  reference      String?
+  notes          String?
+  createdById    String?
+  cancelledById  String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  createdBy   User? @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("ExpenseCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@index([expenseDate])
+  @@index([category])
+  @@index([status])
+  @@index([expenseNumber])
+  @@index([idempotencyKey])
+}
+
+// --------------------------------------------------
+// 15. Day End Closing & Shift Controller
+// --------------------------------------------------
+
+model DayEndClosing {
+  id                     String       @id @default(uuid())
+  businessDate           DateTime     @unique @db.Date
+  closingStatus          DayEndStatus @default(CLOSED)
+  openingStockKg         Decimal      @db.Decimal(12, 3)
+  totalReceivedKg        Decimal      @db.Decimal(12, 3)
+  totalSoldKg            Decimal      @db.Decimal(12, 3)
+  totalWastageKg         Decimal      @db.Decimal(12, 3)
+  totalAdjustedKg        Decimal      @db.Decimal(12, 3)
+  expectedClosingStockKg Decimal      @db.Decimal(12, 3)
+  actualPhysicalStockKg  Decimal      @db.Decimal(12, 3)
+  stockVarianceKg        Decimal      @db.Decimal(12, 3)
+  openingCash            Decimal      @db.Decimal(10, 2)
+  cashReceivedSales      Decimal      @db.Decimal(10, 2)
+  cashPaidPurchases      Decimal      @db.Decimal(10, 2)
+  cashPaidAdvances       Decimal      @db.Decimal(10, 2)
+  cashPaidExpenses       Decimal      @db.Decimal(10, 2)
+  expectedClosingCash    Decimal      @db.Decimal(10, 2)
+  actualPhysicalCash     Decimal      @db.Decimal(10, 2)
+  cashVariance           Decimal      @db.Decimal(10, 2)
+  varianceReason         String?
+  closedById             String
+  closedAt               DateTime     @default(now())
+  reopenedById           String?
+  reopenedAt             DateTime?
+  reopenReason           String?
+
+  closedBy   User  @relation("DayEndClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+  reopenedBy User? @relation("DayEndReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+
+  @@index([businessDate])
+  @@index([closingStatus])
 }

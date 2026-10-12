@@ -21,7 +21,7 @@ describe('Phase 1 HTTP Server and Middleware Pipeline Tests', () => {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(json.success, true);
-    assert.strictEqual(json.data.name, 'Marlin Sea Food ERP API');
+    assert.strictEqual(json.data.name, 'Marine Seafoods ERP API');
   });
 
   test('GET /api/health returns healthy status and system metrics', async () => {

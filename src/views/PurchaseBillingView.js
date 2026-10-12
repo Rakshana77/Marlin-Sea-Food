@@ -241,20 +241,33 @@ export function renderPurchaseBillingView() {
                 <span>Plastic Crate Deduction:</span>
                 <div class="flex items-center gap-1">
                   <span>-₹</span>
-                  <input type="number" id="settle-crate-deduction" value="300" class="w-16 h-7 text-right px-1 bg-white border border-outline-variant rounded font-mono font-bold text-xs" />
+                  <input type="number" id="settle-crate-deduction" value="300" class="w-20 h-7 text-right px-1 bg-white border border-outline-variant rounded font-mono font-bold text-xs" />
                 </div>
               </div>
 
+              <!-- Available Advance Indicator -->
+              <div class="flex justify-between items-center text-outline text-xs">
+                <span>Available Advance Balance:</span>
+                <span id="settle-available-advance" class="font-mono font-bold text-warning tabular-nums">₹${defaultFisherman.outstanding.toLocaleString('en-IN')}</span>
+              </div>
+
+              <!-- Advance to Adjust Input -->
               <div class="flex justify-between items-center text-on-surface-variant">
-                <span>Diesel / Cash Advance Adj:</span>
+                <span class="font-medium">Advance to Adjust:</span>
                 <div class="flex items-center gap-1">
                   <span>-₹</span>
-                  <input type="number" id="settle-advance-deduction" value="2000" class="w-16 h-7 text-right px-1 bg-white border border-outline-variant rounded font-mono font-bold text-xs" />
+                  <input type="number" id="settle-advance-deduction" value="2000" class="w-20 h-7 text-right px-1 bg-white border border-warning rounded font-mono font-bold text-xs text-warning" />
                 </div>
+              </div>
+
+              <!-- Remaining Advance Balance -->
+              <div class="flex justify-between items-center text-xs pb-1 border-b border-outline-variant/40">
+                <span class="text-outline">Remaining Advance After Bill:</span>
+                <span id="settle-remaining-advance" class="font-mono font-bold text-primary tabular-nums">₹${Math.max(0, defaultFisherman.outstanding - 2000).toLocaleString('en-IN')}</span>
               </div>
 
               <!-- Net Payable Hero -->
-              <div class="border-t border-outline-variant pt-2 mt-1 flex justify-between items-baseline">
+              <div class="pt-2 mt-1 flex justify-between items-baseline">
                 <span class="font-bold text-sm text-primary">NET PAYABLE:</span>
                 <span id="settle-grand-total" class="font-headline-lg text-headline-lg text-profit font-bold tabular-nums">₹14,400</span>
               </div>
@@ -360,8 +373,31 @@ export function bindPurchaseBillingEvents() {
     });
 
     const crateDeduction = parseFloat(container.querySelector('#settle-crate-deduction').value) || 0;
-    const advanceDeduction = parseFloat(container.querySelector('#settle-advance-deduction').value) || 0;
+    const fishermanId = fishermanSelect ? fishermanSelect.value : state.fishermen[0].id;
+    const fisherman = state.fishermen.find(item => item.id === fishermanId) || state.fishermen[0];
+    const availableAdvance = fisherman.outstanding || 0;
+
+    let advanceDeduction = parseFloat(container.querySelector('#settle-advance-deduction').value) || 0;
+    
+    // Constraint: advance adjusted cannot exceed available advance
+    if (advanceDeduction > availableAdvance) {
+      advanceDeduction = availableAdvance;
+      container.querySelector('#settle-advance-deduction').value = advanceDeduction;
+    }
+
+    const netPayablePre = Math.max(0, subtotal - crateDeduction);
+    if (advanceDeduction > netPayablePre) {
+      advanceDeduction = netPayablePre;
+      container.querySelector('#settle-advance-deduction').value = advanceDeduction;
+    }
+
+    const remainingAdvance = Math.max(0, availableAdvance - advanceDeduction);
     const grandTotal = Math.max(0, subtotal - crateDeduction - advanceDeduction);
+
+    const availElem = container.querySelector('#settle-available-advance');
+    const remElem = container.querySelector('#settle-remaining-advance');
+    if (availElem) availElem.textContent = `₹${availableAdvance.toLocaleString('en-IN')}`;
+    if (remElem) remElem.textContent = `₹${remainingAdvance.toLocaleString('en-IN')}`;
 
     container.querySelector('#settle-total-kg').textContent = `${totalKg.toFixed(1)} KG`;
     container.querySelector('#settle-subtotal').textContent = `₹${Math.round(subtotal).toLocaleString('en-IN')}`;
@@ -444,9 +480,11 @@ export function bindPurchaseBillingEvents() {
     recalculate();
   });
 
-  // Save Bill Action
+  // Save Bill Action with double-submission protection
   const saveBtn = container.querySelector('#billing-save-btn');
   const executeSave = () => {
+    if (saveBtn.disabled) return;
+
     const calc = recalculate();
     const fishermanId = fishermanSelect.value;
     const fisherman = state.fishermen.find(f => f.id === fishermanId) || state.fishermen[0];
@@ -466,23 +504,43 @@ export function bindPurchaseBillingEvents() {
       items.push({ speciesId, speciesName, crates, grossKg, tareKg, netKg, rate, amount });
     });
 
-    const bill = store.addPurchaseBill({
-      fishermanId: fisherman.id,
-      fishermanName: fisherman.name,
-      boatName: fisherman.boatName,
-      mobile: fisherman.mobile,
-      items,
-      totalKg: calc.totalKg,
-      totalCrates: calc.totalCrates,
-      subtotal: calc.subtotal,
-      crateDeduction: calc.crateDeduction,
-      advanceDeduction: calc.advanceDeduction,
-      grandTotal: calc.grandTotal,
-      paymentMethod: selectedMethod
-    });
+    if (items.length === 0 || calc.totalKg <= 0) {
+      showToast("Cannot save empty catch record.", "error");
+      return;
+    }
 
-    showToast(`Bill ${bill.id} saved successfully!`, 'success');
-    openThermalReceiptModal(bill);
+    // Double submission protection
+    saveBtn.disabled = true;
+    saveBtn.classList.add('opacity-75', 'cursor-not-allowed');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = `
+      <span class="material-symbols-outlined text-[20px] animate-spin">refresh</span>
+      <span>RECORDING COLLECTION & UPDATING LEDGER...</span>
+    `;
+
+    try {
+      const bill = store.addPurchaseBill({
+        fishermanId: fisherman.id,
+        fishermanName: fisherman.name,
+        boatName: fisherman.boatName,
+        mobile: fisherman.mobile,
+        items,
+        totalKg: calc.totalKg,
+        totalCrates: calc.totalCrates,
+        subtotal: calc.subtotal,
+        crateDeduction: calc.crateDeduction,
+        advanceDeduction: calc.advanceDeduction,
+        grandTotal: calc.grandTotal,
+        paymentMethod: selectedMethod
+      });
+
+      showToast(`Collection Bill ${bill.id} saved! Advance balance updated.`, 'success');
+      openThermalReceiptModal(bill);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+      saveBtn.innerHTML = originalText;
+    }
   };
 
   saveBtn.addEventListener('click', executeSave);

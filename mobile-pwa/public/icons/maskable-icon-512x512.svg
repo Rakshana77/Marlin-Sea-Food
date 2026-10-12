@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="maskGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a2540" />
+      <stop offset="100%" stop-color="#000f22" />
+    </linearGradient>
+    <linearGradient id="marineGradM" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488" />
+      <stop offset="100%" stop-color="#86f2e4" />
+    </linearGradient>
+  </defs>
+  <!-- Full bleed background for maskable safe-zone compliance -->
+  <rect width="512" height="512" fill="url(#maskGrad)" />
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#0d9488" stroke-width="5" stroke-dasharray="12 8" opacity="0.6"/>
+  <!-- Scaled anchor within 80% safe zone -->
+  <g transform="translate(152, 140) scale(4.33)">
+    <circle cx="24" cy="10" r="4" fill="none" stroke="url(#marineGradM)" stroke-width="2.5" />
+    <line x1="24" y1="14" x2="24" y2="38" stroke="url(#marineGradM)" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="15" y1="20" x2="33" y2="20" stroke="url(#marineGradM)" stroke-width="2.5" stroke-linecap="round" />
+    <path d="M 12 28 C 12 39, 36 39, 36 28" fill="none" stroke="url(#marineGradM)" stroke-width="2.5" stroke-linecap="round" />
+    <polyline points="9,26 12,28 15,26" fill="none" stroke="url(#marineGradM)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <polyline points="33,26 36,28 39,26" fill="none" stroke="url(#marineGradM)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+  <path d="M 160 365 Q 256 345 352 365" fill="none" stroke="#86f2e4" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+</svg>

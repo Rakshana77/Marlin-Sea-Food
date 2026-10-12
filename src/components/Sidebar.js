@@ -1,39 +1,49 @@
-// AppSidebar Component - Fixed Command Dock
+// AppSidebar Component - Fixed Command Dock with RBAC Filtering
 import { store } from '../state/store.js';
 
 export function renderSidebar(currentRoute) {
   const state = store.getState();
+  const companyName = (store.getCompanyName ? store.getCompanyName() : (state.settings?.companyName || 'Marine Seafoods')).toUpperCase();
+  const isWorker = (state.user?.role || '').toUpperCase() === 'WORKER';
 
-  const navItems = [
+  // RBAC Navigation items
+  const adminNavItems = [
     { section: 'Operations Terminal', items: [
-      { id: 'pos', label: 'Point of Sale', icon: 'point_of_sale' },
-      { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' }
-    ]},
-    { section: 'Billing & Trade', items: [
-      { id: 'purchase-bills', label: 'Purchase Bills', icon: 'receipt_long' },
+      { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' },
+      { id: 'purchase-bills', label: 'Daily Collection', icon: 'receipt_long' },
+      { id: 'pos', label: 'Wholesale Sales', icon: 'point_of_sale' },
       { id: 'export-bills', label: 'Export Bills', icon: 'local_shipping' }
     ]},
     { section: 'Seafood Inventory', items: [
-      { id: 'seafood-master', label: 'Seafood Master', icon: 'set_meal' },
-      { id: 'daily-rates', label: 'Daily Rates', icon: 'show_chart' },
-      { id: 'stock', label: 'Stock & Cold Store', icon: 'inventory_2' }
+      { id: 'stock', label: 'Seafood Stock', icon: 'inventory_2' },
+      { id: 'daily-rates', label: 'Daily Seafood Rates', icon: 'show_chart' },
+      { id: 'seafood-master', label: 'Seafood Items', icon: 'set_meal' }
     ]},
-    { section: 'People Registry', items: [
-      { id: 'fishermen', label: 'Fishermen', icon: 'sailing' },
-      { id: 'customers', label: 'Customers', icon: 'storefront' },
+    { section: 'Trading Partners', items: [
+      { id: 'fishermen', label: 'Fishermen / Suppliers', icon: 'sailing' },
+      { id: 'customers', label: 'Buyers', icon: 'storefront' },
       { id: 'export-companies', label: 'Export Companies', icon: 'apartment' }
     ]},
     { section: 'Financial Ledger', items: [
       { id: 'expenses', label: 'Expenses', icon: 'payments' },
       { id: 'profit-and-loss', label: 'Profit & Loss', icon: 'query_stats' },
-      { id: 'day-end', label: 'Day End Closing', icon: 'lock_clock' },
+      { id: 'day-end', label: 'Day Out', icon: 'lock_clock' },
       { id: 'month-end', label: 'Month End Summary', icon: 'calendar_month' }
     ]},
     { section: 'Analytics & System', items: [
-      { id: 'reports', label: 'Reports Hub', icon: 'bar_chart' },
+      { id: 'reports', label: 'Reports', icon: 'bar_chart' },
       { id: 'settings', label: 'Settings', icon: 'settings' }
     ]}
   ];
+
+  const workerNavItems = [
+    { section: 'Counter Terminal', items: [
+      { id: 'pos', label: 'Wholesale Sales', icon: 'point_of_sale' },
+      { id: 'daily-rates', label: 'Daily Seafood Rates', icon: 'show_chart' }
+    ]}
+  ];
+
+  const navItems = isWorker ? workerNavItems : adminNavItems;
 
   return `
     <aside class="hidden lg:flex fixed left-0 top-0 h-screen w-64 bg-primary-container z-40 flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.18)] select-none">
@@ -48,8 +58,10 @@ export function renderSidebar(currentRoute) {
             <path d="M14 36C20 34 28 36 34 32" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
           </svg>
           <div class="flex flex-col min-w-0">
-            <span class="font-title-md text-title-md text-on-primary font-bold tracking-tight truncate">MARLIN SEA FOOD</span>
-            <span class="font-label-caps text-label-caps text-secondary-fixed uppercase tracking-wider">Harbor Terminal ERP</span>
+            <span class="font-title-md text-title-md text-on-primary font-bold tracking-tight truncate">${companyName}</span>
+            <span class="font-label-caps text-label-caps text-secondary-fixed uppercase tracking-wider">
+              ${isWorker ? 'COUNTER STAFF TERMINAL' : 'PROCUREMENT & WHOLESALE ERP'}
+            </span>
           </div>
         </div>
 
@@ -57,10 +69,12 @@ export function renderSidebar(currentRoute) {
         <div class="px-space-md py-space-sm">
           <div class="flex items-center justify-between px-space-sm py-1.5 bg-surface-container-lowest/10 rounded-md">
             <div class="flex items-center gap-space-xs">
-              <span class="w-2 h-2 rounded-full bg-secondary-fixed animate-pulse"></span>
+              <span class="w-2 h-2 rounded-full ${isWorker ? 'bg-warning' : 'bg-secondary-fixed'} animate-pulse"></span>
               <span class="font-label-caps text-label-caps text-on-primary">${state.terminal}</span>
             </div>
-            <span class="font-label-caps text-label-caps text-secondary-fixed font-bold">${state.cloudSync}</span>
+            <span class="font-label-caps text-label-caps ${isWorker ? 'text-warning font-bold' : 'text-secondary-fixed font-bold'}">
+              ${isWorker ? 'WORKER' : 'ADMIN'}
+            </span>
           </div>
         </div>
 
@@ -92,30 +106,25 @@ export function renderSidebar(currentRoute) {
         </nav>
       </div>
 
-      <!-- Bottom User Profile & Shift Controls -->
+      <!-- Bottom User Profile & Logout Controls -->
       <div class="p-space-md bg-primary border-t border-primary/40 shrink-0">
-        <div class="flex items-center justify-between p-space-sm bg-surface-container-lowest/5 rounded-lg mb-2">
-          <div class="flex items-center gap-space-xs">
-            <span class="material-symbols-outlined text-secondary-fixed text-[16px]">cloud_done</span>
-            <span class="font-body-sm text-body-sm text-primary-fixed">Auto-Cloud Sync</span>
-          </div>
-          <span class="font-label-caps text-label-caps text-secondary-fixed">LIVE</span>
-        </div>
-        
         <div class="flex items-center justify-between pt-1">
           <div class="flex items-center gap-space-sm min-w-0">
-            <div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-              <span class="material-symbols-outlined text-on-secondary text-[18px]">person</span>
+            <div class="w-8 h-8 rounded-full ${isWorker ? 'bg-warning/20 text-warning' : 'bg-secondary text-on-secondary'} flex items-center justify-center shrink-0 font-bold text-xs">
+              ${state.user?.name ? state.user.name.charAt(0) : 'U'}
             </div>
             <div class="flex flex-col min-w-0">
-              <span class="font-title-md text-title-md text-on-primary truncate leading-tight">${state.user.name}</span>
-              <span class="font-body-sm text-body-sm text-on-primary-container truncate">${state.user.role}</span>
+              <span class="font-title-md text-title-md text-on-primary truncate leading-tight">${state.user?.name || 'Authorized User'}</span>
+              <span class="font-body-sm text-body-sm ${isWorker ? 'text-warning font-bold' : 'text-on-primary-container'} truncate">
+                ${state.user?.role || 'User'}
+              </span>
             </div>
           </div>
           <button 
-            data-action="logout-modal"
+            id="sidebar-logout-btn"
+            data-action="logout"
             class="p-1.5 text-primary-fixed-dim hover:text-error hover:bg-primary-container rounded-lg transition-colors shrink-0" 
-            title="Logout / Change Shift"
+            title="Sign Out / Switch User"
           >
             <span class="material-symbols-outlined text-[20px]">logout</span>
           </button>

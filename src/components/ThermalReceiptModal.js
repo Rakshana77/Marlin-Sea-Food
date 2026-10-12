@@ -1,10 +1,13 @@
 // ThermalReceiptModal Component - 80mm ESC/POS Thermal Receipt Slip & PDF
+import { store } from '../state/store.js';
 import { openWhatsAppModal } from './WhatsAppPreviewModal.js';
 import { showToast } from './Toast.js';
+import { printThermalReceipt } from '../utils/receiptPrinter.js';
 
 export function openThermalReceiptModal(bill) {
   const container = document.getElementById('modal-root');
   if (!container) return;
+  const companyName = store.getCompanyName ? store.getCompanyName() : 'Marine Seafoods';
 
   const modalOverlay = document.createElement('div');
   modalOverlay.id = 'thermal-receipt-modal';
@@ -17,7 +20,7 @@ export function openThermalReceiptModal(bill) {
         <div class="flex items-center gap-2">
           <span class="material-symbols-outlined text-secondary text-[24px]">receipt_long</span>
           <div>
-            <h2 class="font-title-lg text-title-lg text-primary font-bold">Procurement Bill Saved</h2>
+            <h2 class="font-title-lg text-title-lg text-primary font-bold">Collection Record Saved</h2>
             <p class="text-xs text-on-surface-variant font-mono">${bill.id} • ${bill.date}</p>
           </div>
         </div>
@@ -54,8 +57,8 @@ export function openThermalReceiptModal(bill) {
         <!-- Printable Area -->
         <div id="thermal-receipt-print-area" class="w-full max-w-[76mm] text-center">
           <div class="border-b border-black pb-2 mb-2">
-            <h3 class="font-bold text-base tracking-tight">MARLIN SEA FOOD</h3>
-            <p class="text-[10px]">Harbor Wholesale Terminal 04</p>
+            <h3 class="font-bold text-base tracking-tight">${companyName.toUpperCase()}</h3>
+            <p class="text-[10px]">Harbor Seafood Procurement Terminal 04</p>
             <p class="text-[10px]">North Slipway, Chennai Harbour</p>
             <p class="text-[10px]">Ph: +91 98401 00000 | GST: 33AABCM9012F1Z4</p>
           </div>
@@ -158,7 +161,8 @@ export function openThermalReceiptModal(bill) {
 
   // Print button
   modalOverlay.querySelector('#print-slip-btn').addEventListener('click', () => {
-    window.print();
+    printThermalReceipt('thermal-receipt-print-area');
+    showToast('Receipt sent to 80mm thermal printer');
   });
 
   // WhatsApp button

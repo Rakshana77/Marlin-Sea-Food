@@ -2,20 +2,29 @@ import { prisma } from '../lib/prisma';
 import { SaleRepository, SaleWithRelations } from '../repositories/sale.repository';
 import { AppError } from '../utils/appError';
 import { generateSaleInvoiceNumber } from '../utils/billNumber';
+import { assertBusinessDateOpen } from '../utils/dayEnd';
 import { DailyRateService } from './dailyRate.service';
-import { Prisma, SaleStatus, PaymentMethod, PaymentStatus, MasterStatus } from '@prisma/client';
+import { Prisma, SaleStatus, PaymentMethod, PaymentStatus, MasterStatus, SaleType, StockMovementType } from '@prisma/client';
 
 export interface CreateSaleItemInput {
   seafoodId: string;
   gradeId: string;
   quantityKg: string;
+  sellingRate?: string;
+  unitPrice?: string;
 }
 
 export interface CreateSaleInput {
+  saleType?: SaleType;
   customerId?: string;
+  exportCompanyId?: string | null;
+  exportRef?: string | null;
+  dispatchDate?: string | null;
+  destinationPort?: string | null;
   saleDate: string;
   items: CreateSaleItemInput[];
   discount?: string;
+  taxAmount?: string;
   payment?: {
     method: PaymentMethod;
     amount?: string;
@@ -33,6 +42,9 @@ export interface FormattedSaleItem {
   quantityKg: string;
   sellingRate: string;
   amount: string;
+  costRate?: string;
+  cogsAmount?: string;
+  grossProfit?: string;
   seafood: {
     id: string;
     name: string;
@@ -54,7 +66,8 @@ export interface FormattedSale {
   invoiceNumber: string;
   idempotencyKey?: string | null;
   saleDate: string;
-  customerId: string;
+  saleType: SaleType;
+  customerId: string | null;
   customer: {
     id: string;
     name: string;
@@ -62,16 +75,34 @@ export interface FormattedSale {
     mobileNumber: string;
     email: string | null;
     address: string | null;
-  };
+  } | null;
+  exportCompanyId: string | null;
+  exportCompany: {
+    id: string;
+    companyName: string;
+    contactPerson: string | null;
+    countryCode: string;
+    mobileNumber: string | null;
+    email: string | null;
+    address: string | null;
+    taxNumber: string | null;
+  } | null;
   items: FormattedSaleItem[];
   totalKg: string;
   subtotal: string;
   discount: string;
+  taxAmount: string;
   grandTotal: string;
+  totalCogs?: string;
+  totalGrossProfit?: string;
   paidAmount: string;
+  outstandingAmount: string;
   changeAmount: string;
   paymentStatus: PaymentStatus;
   status: SaleStatus;
+  exportRef: string | null;
+  dispatchDate: string | null;
+  destinationPort: string | null;
   notes: string | null;
   payments: Array<{
     id: string;
@@ -95,8 +126,11 @@ export class SaleService {
       invoiceNumber: sale.invoiceNumber,
       idempotencyKey: sale.idempotencyKey,
       saleDate: DailyRateService.formatDate(sale.saleDate),
+      saleType: sale.saleType || SaleType.WHOLESALE,
       customerId: sale.customerId,
       customer: sale.customer,
+      exportCompanyId: sale.exportCompanyId,
+      exportCompany: sale.exportCompany,
       items: sale.items.map((item) => ({
         id: item.id,
         seafoodId: item.seafoodId,
@@ -104,17 +138,27 @@ export class SaleService {
         quantityKg: new Prisma.Decimal(item.quantityKg).toFixed(3),
         sellingRate: new Prisma.Decimal(item.sellingRate).toFixed(2),
         amount: new Prisma.Decimal(item.amount).toFixed(2),
+        costRate: item.costRate != null ? new Prisma.Decimal(item.costRate).toFixed(2) : '0.00',
+        cogsAmount: item.cogsAmount != null ? new Prisma.Decimal(item.cogsAmount).toFixed(2) : '0.00',
+        grossProfit: item.grossProfit != null ? new Prisma.Decimal(item.grossProfit).toFixed(2) : '0.00',
         seafood: item.seafood,
         grade: item.grade
       })),
       totalKg: new Prisma.Decimal(sale.totalKg).toFixed(3),
       subtotal: new Prisma.Decimal(sale.subtotal).toFixed(2),
       discount: new Prisma.Decimal(sale.discount).toFixed(2),
+      taxAmount: sale.taxAmount != null ? new Prisma.Decimal(sale.taxAmount).toFixed(2) : '0.00',
       grandTotal: new Prisma.Decimal(sale.grandTotal).toFixed(2),
+      totalCogs: sale.totalCogs != null ? new Prisma.Decimal(sale.totalCogs).toFixed(2) : '0.00',
+      totalGrossProfit: sale.totalGrossProfit != null ? new Prisma.Decimal(sale.totalGrossProfit).toFixed(2) : '0.00',
       paidAmount: new Prisma.Decimal(sale.paidAmount).toFixed(2),
+      outstandingAmount: new Prisma.Decimal(sale.grandTotal).sub(new Prisma.Decimal(sale.paidAmount)).toFixed(2),
       changeAmount: new Prisma.Decimal(sale.changeAmount).toFixed(2),
       paymentStatus: sale.paymentStatus,
       status: sale.status,
+      exportRef: sale.exportRef,
+      dispatchDate: sale.dispatchDate ? sale.dispatchDate.toISOString() : null,
+      destinationPort: sale.destinationPort,
       notes: sale.notes,
       payments: sale.payments.map((p) => ({
         id: p.id,
@@ -161,12 +205,22 @@ export class SaleService {
   /**
    * Completes a seafood sale inside one atomic transaction with concurrency protection.
    */
+  /**
+   * Completes a seafood sale inside one atomic transaction with concurrency protection.
+   * Supports both WHOLESALE and EXPORT billing.
+   */
   async createSale(input: CreateSaleInput, userId?: string): Promise<FormattedSale> {
     const {
-      customerId = 'walk-in',
+      saleType: requestedSaleType,
+      customerId,
+      exportCompanyId,
+      exportRef,
+      dispatchDate,
+      destinationPort,
       saleDate,
       items,
       discount = '0.00',
+      taxAmount = '0.00',
       payment = { method: PaymentMethod.CASH },
       notes,
       idempotencyKey
@@ -183,6 +237,10 @@ export class SaleService {
     if (!items || items.length === 0) {
       throw AppError.badRequest('Sale must contain at least one item', 'EMPTY_SALE_ITEMS');
     }
+
+    // Determine saleType: explicitly requested, or inferred from exportCompanyId
+    const isExport = requestedSaleType === SaleType.EXPORT || (!requestedSaleType && Boolean(exportCompanyId));
+    const saleType = isExport ? SaleType.EXPORT : SaleType.WHOLESALE;
 
     // Check for duplicate seafood + grade items
     const itemKeys = new Set<string>();
@@ -202,61 +260,99 @@ export class SaleService {
     // Run complete sale flow inside one atomic transaction
     const createdSale = await prisma.$transaction(
       async (tx) => {
-        // 1. Resolve & Validate Customer
-        let targetCustomerId: string;
+        // Validate business date is open
+        await assertBusinessDateOpen(tx, saleDateObj);
+        await assertBusinessDateOpen(tx, new Date());
+
+        let targetCustomerId: string | null = null;
+        let targetExportCompany: { id: string; companyName: string } | null = null;
         let isWalkIn = false;
 
-        if (!customerId || customerId.toLowerCase() === 'walk-in') {
-          const walkIn = await this.getOrCreateWalkInCustomer(tx);
-          targetCustomerId = walkIn.id;
-          isWalkIn = true;
-        } else {
-          let customer = null;
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(customerId)) {
-            customer = await tx.customer.findFirst({
-              where: { id: customerId, deletedAt: null }
-            });
-          } else {
-            const demoMap: Record<string, { name: string; mobile: string }> = {
-              'c-1': { name: 'Marina Grand Hotel & Resorts', mobile: '9841011223' },
-              'c-2': { name: 'Ocean Grill Seafood Restaurant', mobile: '9841122334' },
-              'c-3': { name: 'Chettinad Fish Mart (Retail)', mobile: '9841233445' }
-            };
-            const target = demoMap[customerId] || { name: customerId, mobile: '98410' + Math.floor(10000 + Math.random() * 90000) };
-            customer = await tx.customer.findFirst({
-              where: { name: { contains: target.name, mode: 'insensitive' }, deletedAt: null }
-            });
-            if (!customer) {
-              customer = await tx.customer.create({
-                data: {
-                  name: target.name,
-                  mobileNumber: target.mobile,
-                  countryCode: '+91',
-                  address: 'Counter Retail Account'
-                }
-              });
+        if (isExport) {
+          // EXPORT SALE: Export Company is mandatory and authoritative
+          if (!exportCompanyId) {
+            throw AppError.badRequest('exportCompanyId is required for export sales', 'EXPORT_COMPANY_REQUIRED');
+          }
+
+          const expCo = await tx.exportCompany.findFirst({
+            where: { id: exportCompanyId, deletedAt: null }
+          });
+
+          if (!expCo) {
+            throw AppError.notFound('Export company not found', 'EXPORT_COMPANY_NOT_FOUND');
+          }
+
+          if (expCo.status !== MasterStatus.ACTIVE) {
+            throw AppError.badRequest('Export company is inactive', 'EXPORT_COMPANY_INACTIVE');
+          }
+
+          targetExportCompany = expCo;
+
+          // If optional customerId is provided, validate it if present
+          if (customerId && customerId.toLowerCase() !== 'walk-in') {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(customerId)) {
+              const cust = await tx.customer.findFirst({ where: { id: customerId, deletedAt: null } });
+              if (cust && cust.status === MasterStatus.ACTIVE) {
+                targetCustomerId = cust.id;
+              }
             }
           }
+        } else {
+          // WHOLESALE SALE: Customer resolution
+          const effectiveCustId = customerId || 'walk-in';
+          if (effectiveCustId.toLowerCase() === 'walk-in') {
+            const walkIn = await this.getOrCreateWalkInCustomer(tx);
+            targetCustomerId = walkIn.id;
+            isWalkIn = true;
+          } else {
+            let customer = null;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(effectiveCustId)) {
+              customer = await tx.customer.findFirst({
+                where: { id: effectiveCustId, deletedAt: null }
+              });
+            } else {
+              const demoMap: Record<string, { name: string; mobile: string }> = {
+                'c-1': { name: 'Marina Grand Hotel & Resorts', mobile: '9841011223' },
+                'c-2': { name: 'Ocean Grill Seafood Restaurant', mobile: '9841122334' },
+                'c-3': { name: 'Chettinad Fish Mart (Retail)', mobile: '9841233445' }
+              };
+              const target = demoMap[effectiveCustId] || { name: effectiveCustId, mobile: '98410' + Math.floor(10000 + Math.random() * 90000) };
+              customer = await tx.customer.findFirst({
+                where: { name: { contains: target.name, mode: 'insensitive' }, deletedAt: null }
+              });
+              if (!customer) {
+                customer = await tx.customer.create({
+                  data: {
+                    name: target.name,
+                    mobileNumber: target.mobile,
+                    countryCode: '+91',
+                    address: 'Counter Retail Account'
+                  }
+                });
+              }
+            }
 
-          if (!customer) {
-            throw AppError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
+            if (!customer) {
+              throw AppError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
+            }
+
+            if (customer.status !== MasterStatus.ACTIVE) {
+              throw AppError.badRequest('Customer is inactive', 'CUSTOMER_INACTIVE');
+            }
+
+            targetCustomerId = customer.id;
+            isWalkIn = customer.mobileNumber === '0000000000';
           }
 
-          if (customer.status !== MasterStatus.ACTIVE) {
-            throw AppError.badRequest('Customer is inactive', 'CUSTOMER_INACTIVE');
+          // Credit sale validation: Walk-in customers cannot buy on credit
+          if (isWalkIn && payment.method === PaymentMethod.CREDIT) {
+            throw AppError.badRequest(
+              'Credit sales require an identifiable customer record. Walk-in credit is not permitted.',
+              'WALK_IN_CREDIT_NOT_ALLOWED'
+            );
           }
-
-          targetCustomerId = customer.id;
-          isWalkIn = customer.mobileNumber === '0000000000';
-        }
-
-        // Credit sale validation: Walk-in customers cannot buy on credit
-        if (isWalkIn && payment.method === PaymentMethod.CREDIT) {
-          throw AppError.badRequest(
-            'Credit sales require an identifiable customer record. Walk-in credit is not permitted.',
-            'WALK_IN_CREDIT_NOT_ALLOWED'
-          );
         }
 
         // 2. Validate Items, Published Selling Rates, and Quantities
@@ -361,18 +457,27 @@ export class SaleService {
             throw AppError.notFound(`Grade with id ${item.gradeId} not found`, 'GRADE_NOT_FOUND');
           }
 
-          // Lookup PUBLISHED DailyRate for saleDate, seafoodId, gradeId
-          const dailyRate = rateMap.get(`${item.seafoodId}:${item.gradeId}`);
-          if (!dailyRate) {
-            throw AppError.badRequest(
-              `Published daily selling rate not found for ${seafood.name} (${grade.name}) on ${saleDate}`,
-              'RATE_NOT_PUBLISHED'
-            );
-          }
+          // Rate resolution: Allow custom price if passed, else require published DailyRate
+          let rateSnapshot: Prisma.Decimal;
+          const customRate = item.sellingRate || item.unitPrice;
+          if (customRate !== undefined && customRate !== null && customRate !== '') {
+            rateSnapshot = new Prisma.Decimal(customRate);
+            if (rateSnapshot.lessThan(0)) {
+              throw AppError.badRequest('Selling rate cannot be negative', 'INVALID_RATE');
+            }
+          } else {
+            const dailyRate = rateMap.get(`${item.seafoodId}:${item.gradeId}`);
+            if (!dailyRate) {
+              throw AppError.badRequest(
+                `Published daily selling rate not found for ${seafood.name} (${grade.name}) on ${saleDate}`,
+                'RATE_NOT_PUBLISHED'
+              );
+            }
 
-          const rateSnapshot = new Prisma.Decimal(dailyRate.sellingRate);
-          if (rateSnapshot.lessThan(0)) {
-            throw AppError.badRequest('Selling rate cannot be negative', 'INVALID_RATE');
+            rateSnapshot = new Prisma.Decimal(dailyRate.sellingRate);
+            if (rateSnapshot.lessThan(0)) {
+              throw AppError.badRequest('Selling rate cannot be negative', 'INVALID_RATE');
+            }
           }
 
           // Authoritative server-side amount calculation
@@ -394,7 +499,7 @@ export class SaleService {
           });
         }
 
-        // 3. Validate Discount
+        // 3. Validate Discount & Tax
         const discountDecimal = new Prisma.Decimal(discount);
         if (discountDecimal.lessThan(0)) {
           throw AppError.badRequest('Discount cannot be negative', 'INVALID_DISCOUNT');
@@ -403,8 +508,13 @@ export class SaleService {
           throw AppError.badRequest('Discount cannot exceed subtotal', 'INVALID_DISCOUNT');
         }
 
+        const taxDecimal = new Prisma.Decimal(taxAmount);
+        if (taxDecimal.lessThan(0)) {
+          throw AppError.badRequest('Tax amount cannot be negative', 'INVALID_TAX_AMOUNT');
+        }
+
         // 4. Calculate Grand Total
-        const grandTotal = calculatedSubtotal.sub(discountDecimal);
+        const grandTotal = calculatedSubtotal.sub(discountDecimal).add(taxDecimal);
 
         // 5. Payment Tender & Change Calculation
         const paymentMethod = payment.method || PaymentMethod.CASH;
@@ -413,7 +523,6 @@ export class SaleService {
         let paymentStatus: PaymentStatus = PaymentStatus.PENDING;
 
         if (paymentMethod === PaymentMethod.CASH) {
-          // If cash amount was not explicitly passed, assume exact cash tender
           const cashReceived = payment.amount
             ? new Prisma.Decimal(payment.amount)
             : grandTotal;
@@ -427,7 +536,6 @@ export class SaleService {
             changeAmount = cashReceived.sub(grandTotal);
             paymentStatus = PaymentStatus.PAID;
           } else {
-            // Partial cash payment
             paidAmount = cashReceived;
             changeAmount = new Prisma.Decimal(0);
             paymentStatus = paidAmount.greaterThan(0) ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.PENDING;
@@ -474,20 +582,37 @@ export class SaleService {
           }
         }
 
-        // 6. Concurrency Protection & Stock Deductions
-        // Lock stock rows with FOR UPDATE to prevent race conditions & overselling
+        // 6. Concurrency Protection, WAC Costing & Stock Deductions
+        // Sort items deterministically by seafoodId and gradeId to eliminate deadlock risk
+        const sortedSaleItems = [...validatedItems].sort((a, b) => {
+          const comp = a.seafoodId.localeCompare(b.seafoodId);
+          return comp !== 0 ? comp : a.gradeId.localeCompare(b.gradeId);
+        });
+
         const stockUpdates: Array<{
           stockId: string;
           seafoodId: string;
           gradeId: string;
           quantityKg: Prisma.Decimal;
+          sellingRate: Prisma.Decimal;
+          amount: Prisma.Decimal;
+          costRate: Prisma.Decimal;
+          cogsAmount: Prisma.Decimal;
+          grossProfit: Prisma.Decimal;
           balanceBefore: Prisma.Decimal;
           balanceAfter: Prisma.Decimal;
         }> = [];
 
-        for (const item of validatedItems) {
-          const lockedRows = await tx.$queryRaw<Array<{ id: string; quantityKg: string | number | Prisma.Decimal }>>`
-            SELECT id, "quantityKg"
+        let calculatedTotalCogs = new Prisma.Decimal(0);
+
+        for (const item of sortedSaleItems) {
+          const lockedRows = await tx.$queryRaw<Array<{
+            id: string;
+            quantityKg: string | number | Prisma.Decimal;
+            averageCost: string | number | Prisma.Decimal;
+            totalValue: string | number | Prisma.Decimal;
+          }>>`
+            SELECT id, "quantityKg", "averageCost", "totalValue"
             FROM "Stock"
             WHERE "seafoodId" = ${item.seafoodId} AND "gradeId" = ${item.gradeId}
             FOR UPDATE
@@ -523,6 +648,24 @@ export class SaleService {
           const balanceBefore = currentStockDec;
           const balanceAfter = balanceBefore.sub(item.quantityKg);
 
+          // Authoritative WAC cost rate resolution
+          let costRate = new Prisma.Decimal(lockedRows[0].averageCost || 0);
+
+          if (costRate.isZero()) {
+            const dailyRate = rateMap.get(`${item.seafoodId}:${item.gradeId}`);
+            if (dailyRate) {
+              costRate = new Prisma.Decimal(dailyRate.purchaseRate);
+            }
+          }
+
+          const cogsAmount = item.quantityKg.mul(costRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+          const grossProfit = item.amount.sub(cogsAmount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+          calculatedTotalCogs = calculatedTotalCogs.add(cogsAmount);
+
+          // Remaining stock valuation
+          const stockAvgCost = new Prisma.Decimal(lockedRows[0].averageCost || costRate);
+          const remainingTotalValue = balanceAfter.mul(stockAvgCost).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
           // Atomic conditional update guaranteeing quantityKg >= item.quantityKg
           const updateCount = await tx.stock.updateMany({
             where: {
@@ -530,7 +673,8 @@ export class SaleService {
               quantityKg: { gte: item.quantityKg }
             },
             data: {
-              quantityKg: balanceAfter
+              quantityKg: balanceAfter,
+              totalValue: remainingTotalValue
             }
           });
 
@@ -552,25 +696,50 @@ export class SaleService {
             seafoodId: item.seafoodId,
             gradeId: item.gradeId,
             quantityKg: item.quantityKg,
+            sellingRate: item.sellingRate,
+            amount: item.amount,
+            costRate,
+            cogsAmount,
+            grossProfit,
             balanceBefore,
             balanceAfter
           });
         }
 
+        const calculatedTotalGrossProfit = grandTotal.sub(calculatedTotalCogs).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
         // 7. Generate Collision-Safe Sequential Sale Invoice Number
         const invoiceNumber = await generateSaleInvoiceNumber(tx, saleDate);
 
-        // 8. Create Sale Record
+        // Map computed costs by seafoodId:gradeId to preserve original manifest line item order
+        const costMap = new Map<string, { costRate: Prisma.Decimal; cogsAmount: Prisma.Decimal; grossProfit: Prisma.Decimal }>();
+        for (const update of stockUpdates) {
+          costMap.set(`${update.seafoodId}:${update.gradeId}`, {
+            costRate: update.costRate,
+            cogsAmount: update.cogsAmount,
+            grossProfit: update.grossProfit
+          });
+        }
+
+        // 8. Create Sale Record with Snapshot of Total COGS & Margin
         const sale = await tx.sale.create({
           data: {
             invoiceNumber,
             idempotencyKey: idempotencyKey || null,
             saleDate: saleDateObj,
+            saleType,
             customerId: targetCustomerId,
+            exportCompanyId: isExport ? targetExportCompany!.id : null,
+            exportRef: exportRef || null,
+            dispatchDate: dispatchDate ? new Date(dispatchDate) : null,
+            destinationPort: destinationPort || null,
             totalKg: calculatedTotalKg,
             subtotal: calculatedSubtotal,
             discount: discountDecimal,
+            taxAmount: taxDecimal,
             grandTotal,
+            totalCogs: calculatedTotalCogs,
+            totalGrossProfit: calculatedTotalGrossProfit,
             paidAmount,
             changeAmount,
             paymentStatus,
@@ -581,16 +750,23 @@ export class SaleService {
           }
         });
 
-        // 9. Create SaleItems (Rate Snapshots) in batch
+        // 9. Create SaleItems with Permanent Valuation Snapshots (costRate, cogsAmount, grossProfit)
+        // Preserving original manifest item ordering
         await tx.saleItem.createMany({
-          data: validatedItems.map((item) => ({
-            saleId: sale.id,
-            seafoodId: item.seafoodId,
-            gradeId: item.gradeId,
-            quantityKg: item.quantityKg,
-            sellingRate: item.sellingRate,
-            amount: item.amount
-          }))
+          data: validatedItems.map((item) => {
+            const cost = costMap.get(`${item.seafoodId}:${item.gradeId}`)!;
+            return {
+              saleId: sale.id,
+              seafoodId: item.seafoodId,
+              gradeId: item.gradeId,
+              quantityKg: item.quantityKg,
+              sellingRate: item.sellingRate,
+              amount: item.amount,
+              costRate: cost.costRate,
+              cogsAmount: cost.cogsAmount,
+              grossProfit: cost.grossProfit
+            };
+          })
         });
 
         // 10. Record Payment
@@ -600,27 +776,34 @@ export class SaleService {
             amount: paidAmount,
             paymentMethod,
             paymentStatus,
-            paymentDate: new Date(),
+            paymentDate: saleDateObj,
             referenceNumber: payment.referenceNumber || null,
             notes: payment.notes || null,
             createdById: userId || null
           }
         });
 
-        // 11. Create StockMovement Records for Every Item (Type SALE, Negative Quantity) in batch
+        // 11. Create StockMovement Records for Every Item with Snapshotted Unit Cost & COGS
+        const movementType = isExport ? StockMovementType.EXPORT : StockMovementType.SALE;
+        const movementNotes = isExport
+          ? `Export Sale ${invoiceNumber} - ${targetExportCompany!.companyName}`
+          : `POS Retail Sale ${invoiceNumber}`;
+
         await tx.stockMovement.createMany({
           data: stockUpdates.map((update) => ({
             stockId: update.stockId,
             seafoodId: update.seafoodId,
             gradeId: update.gradeId,
-            movementType: 'SALE',
+            movementType,
             quantityKg: update.quantityKg.negated(), // Negative movement e.g. -2.750
             balanceBefore: update.balanceBefore,
             balanceAfter: update.balanceAfter,
+            unitCost: update.costRate,
+            totalCost: update.cogsAmount,
             referenceType: 'SALE',
             referenceId: sale.id,
-            movementDate: new Date(),
-            notes: `POS Retail Sale ${invoiceNumber}`,
+            movementDate: saleDateObj,
+            notes: movementNotes,
             createdById: userId || null
           }))
         });
@@ -637,6 +820,18 @@ export class SaleService {
                 mobileNumber: true,
                 email: true,
                 address: true
+              }
+            },
+            exportCompany: {
+              select: {
+                id: true,
+                companyName: true,
+                contactPerson: true,
+                countryCode: true,
+                mobileNumber: true,
+                email: true,
+                address: true,
+                taxNumber: true
               }
             },
             items: {
@@ -695,14 +890,35 @@ export class SaleService {
     fromDate?: string;
     toDate?: string;
     customerId?: string;
+    exportCompanyId?: string;
+    type?: SaleType | 'WHOLESALE' | 'EXPORT';
+    saleType?: SaleType | 'WHOLESALE' | 'EXPORT';
     seafoodId?: string;
     gradeId?: string;
     paymentStatus?: PaymentStatus;
     status?: SaleStatus;
+    invoiceNumber?: string;
+    billNumber?: string;
     search?: string;
   }): Promise<{ items: FormattedSale[]; total: number; totalPages: number }> {
-    const { page, limit, date, fromDate, toDate, customerId, seafoodId, gradeId, paymentStatus, status, search } =
-      params;
+    const {
+      page,
+      limit,
+      date,
+      fromDate,
+      toDate,
+      customerId,
+      exportCompanyId,
+      type,
+      saleType,
+      seafoodId,
+      gradeId,
+      paymentStatus,
+      status,
+      invoiceNumber,
+      billNumber,
+      search
+    } = params;
     const skip = (page - 1) * limit;
 
     const where: Prisma.SaleWhereInput = {};
@@ -716,8 +932,20 @@ export class SaleService {
     }
 
     if (customerId) where.customerId = customerId;
+    if (exportCompanyId) where.exportCompanyId = exportCompanyId;
+
+    const targetSaleType = type || saleType;
+    if (targetSaleType) {
+      where.saleType = targetSaleType as SaleType;
+    }
+
     if (paymentStatus) where.paymentStatus = paymentStatus;
     if (status) where.status = status;
+
+    const targetNumber = invoiceNumber || billNumber;
+    if (targetNumber) {
+      where.invoiceNumber = { contains: targetNumber, mode: 'insensitive' };
+    }
 
     if (seafoodId || gradeId) {
       where.items = {
@@ -732,7 +960,9 @@ export class SaleService {
       where.OR = [
         { invoiceNumber: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { customer: { mobileNumber: { contains: search } } }
+        { customer: { mobileNumber: { contains: search } } },
+        { exportCompany: { companyName: { contains: search, mode: 'insensitive' } } },
+        { exportRef: { contains: search, mode: 'insensitive' } }
       ];
     }
 
@@ -767,6 +997,10 @@ export class SaleService {
     }
 
     await prisma.$transaction(async (tx) => {
+      // Validate business date is open
+      await assertBusinessDateOpen(tx, existing.saleDate);
+      await assertBusinessDateOpen(tx, new Date());
+
       // 1. Mark Sale as CANCELLED
       await tx.sale.update({
         where: { id },
@@ -784,9 +1018,19 @@ export class SaleService {
       });
 
       // 3. Compensating Stock Reversals for each SaleItem
-      for (const item of existing.items) {
-        const lockedRows = await tx.$queryRaw<Array<{ id: string; quantityKg: string | number | Prisma.Decimal }>>`
-          SELECT id, "quantityKg"
+      // Deterministic ordering to prevent deadlocks
+      const sortedItems = [...existing.items].sort((a, b) =>
+        a.seafoodId.localeCompare(b.seafoodId) || a.gradeId.localeCompare(b.gradeId)
+      );
+
+      for (const item of sortedItems) {
+        const lockedRows = await tx.$queryRaw<Array<{
+          id: string;
+          quantityKg: string | number | Prisma.Decimal;
+          averageCost: string | number | Prisma.Decimal;
+          totalValue: string | number | Prisma.Decimal;
+        }>>`
+          SELECT id, "quantityKg", "averageCost", "totalValue"
           FROM "Stock"
           WHERE "seafoodId" = ${item.seafoodId} AND "gradeId" = ${item.gradeId}
           FOR UPDATE
@@ -794,36 +1038,77 @@ export class SaleService {
 
         let balanceBefore = new Prisma.Decimal(0);
         let stockId: string;
+        let vOld = new Prisma.Decimal(0);
+        let cOld = new Prisma.Decimal(0);
 
         if (lockedRows && lockedRows.length > 0) {
           stockId = lockedRows[0].id;
           balanceBefore = new Prisma.Decimal(lockedRows[0].quantityKg);
-          const balanceAfter = balanceBefore.add(item.quantityKg);
-
-          await tx.stock.update({
-            where: { id: stockId },
-            data: { quantityKg: balanceAfter }
-          });
-
-          await tx.stockMovement.create({
+          vOld = new Prisma.Decimal(lockedRows[0].totalValue);
+          cOld = new Prisma.Decimal(lockedRows[0].averageCost);
+        } else {
+          const newStock = await tx.stock.create({
             data: {
-              stockId,
               seafoodId: item.seafoodId,
               gradeId: item.gradeId,
-              movementType: 'RETURN',
-              quantityKg: item.quantityKg, // Positive reversal
-              balanceBefore,
-              balanceAfter,
-              referenceType: 'SALE_CANCEL',
-              referenceId: id,
-              movementDate: new Date(),
-              notes: `Compensating Stock Reversal for Cancelled Sale ${existing.invoiceNumber}`,
-              createdById: userId || null
+              quantityKg: new Prisma.Decimal(0),
+              averageCost: new Prisma.Decimal(0),
+              totalValue: new Prisma.Decimal(0)
             }
           });
+          stockId = newStock.id;
+          balanceBefore = new Prisma.Decimal(0);
         }
+
+        const qReturned = new Prisma.Decimal(item.quantityKg);
+        const itemCostRate = new Prisma.Decimal(item.costRate ?? 0);
+        const cogsReturned = item.cogsAmount != null && !new Prisma.Decimal(item.cogsAmount).isZero()
+          ? new Prisma.Decimal(item.cogsAmount)
+          : qReturned.mul(itemCostRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+        const balanceAfter = balanceBefore.add(qReturned);
+        const vNew = vOld.add(cogsReturned);
+
+        let cNew: Prisma.Decimal;
+        if (balanceAfter.gt(0)) {
+          cNew = vNew.div(balanceAfter).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        } else {
+          cNew = cOld;
+        }
+        const totalValue = balanceAfter.mul(cNew).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+        await tx.stock.update({
+          where: { id: stockId },
+          data: {
+            quantityKg: balanceAfter,
+            averageCost: cNew,
+            totalValue: totalValue
+          }
+        });
+
+        await tx.stockMovement.create({
+          data: {
+            stockId,
+            seafoodId: item.seafoodId,
+            gradeId: item.gradeId,
+            movementType: 'RETURN',
+            quantityKg: qReturned, // Positive reversal
+            balanceBefore,
+            balanceAfter,
+            unitCost: itemCostRate,
+            totalCost: cogsReturned,
+            referenceType: 'SALE_CANCEL',
+            referenceId: id,
+            movementDate: existing.saleDate,
+            notes: `Compensating Stock Reversal for Cancelled Sale ${existing.invoiceNumber}`,
+            createdById: userId || null
+          }
+        });
       }
 
+    }, {
+      maxWait: 30000,
+      timeout: 60000
     });
 
     const refreshedSale = await this.repo.findById(id);

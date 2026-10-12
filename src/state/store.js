@@ -19,12 +19,28 @@ class Store {
       cloudSync: 'LIVE',
       isDayClosed: false,
       
-      user: {
-        name: 'Admin Wharf',
-        role: 'Master Admin',
-        station: 'Terminal Gate 04',
-        avatar: 'person'
-      },
+      // Authentication & Role
+      authToken: localStorage.getItem('marine_erp_token') || 'demo_admin_jwt_token',
+      user: (() => {
+        try {
+          return JSON.parse(localStorage.getItem('marine_erp_user') || 'null') || {
+            name: 'Admin Wharf',
+            email: 'admin@marineseafoods.com',
+            role: 'ADMIN',
+            station: 'Terminal Gate 04',
+            avatar: 'person'
+          };
+        } catch {
+          return {
+            name: 'Admin Wharf',
+            email: 'admin@marineseafoods.com',
+            role: 'ADMIN',
+            station: 'Terminal Gate 04',
+            avatar: 'person'
+          };
+        }
+      })(),
+      isAuthenticated: true,
       
       notifications: [
         { id: 1, title: 'Cold Storage High Load', text: 'Pre-cooling Bay #2 approaching 82% capacity', time: '10m ago', unread: true },
@@ -409,10 +425,65 @@ class Store {
         { date: '07 Sep 2026, 05:30 AM', species: 'Kingfish Surmai', type: 'Inward Purchase', changeKg: '+50.0', balanceKg: '68.0', ref: 'PB-2026-0891' },
         { date: '06 Sep 2026, 08:00 PM', species: 'Tiger Prawn', type: 'Outward Export', changeKg: '-160.0', balanceKg: '200.0', ref: 'EXP-2026-0412' }
       ],
+
+      // Fishermen Advance Ledger
+      advanceLedgers: [
+        {
+          id: 'ADV-101',
+          fishermanId: 'f-1',
+          date: '28 Sep 2026, 08:00 AM',
+          type: 'Advance Given',
+          amount: 15000,
+          paymentMethod: 'Cash',
+          notes: 'Pre-voyage diesel & provision advance'
+        },
+        {
+          id: 'ADV-ADJ-101',
+          fishermanId: 'f-1',
+          date: '07 Sep 2026, 06:45 AM',
+          type: 'Advance Adjusted',
+          amount: 2000,
+          ref: 'PB-2026-0892',
+          notes: 'Deducted from morning squid catch bill'
+        },
+        {
+          id: 'ADV-102',
+          fishermanId: 'f-2',
+          date: '25 Sep 2026, 09:30 AM',
+          type: 'Advance Given',
+          amount: 50000,
+          paymentMethod: 'Bank Transfer',
+          notes: 'Trawler net replacement advance'
+        },
+        {
+          id: 'ADV-ADJ-102',
+          fishermanId: 'f-2',
+          date: '07 Sep 2026, 05:30 AM',
+          type: 'Advance Adjusted',
+          amount: 5000,
+          ref: 'PB-2026-0891',
+          notes: 'Deducted from tuna & kingfish catch bill'
+        }
+      ],
+
+      // Wastage & Spoilage Records
+      wastageRecords: [
+        {
+          id: 'WST-2026-001',
+          date: '07 Sep 2026',
+          time: '11:15 AM',
+          speciesId: 'squid',
+          speciesName: 'Squid (Loligo)',
+          quantityKg: 5.0,
+          reason: 'Crushed ice melting during handling',
+          estimatedLoss: 1600,
+          notes: 'Pre-cooling crate crushed during dock forklift transit'
+        }
+      ],
       
       // Business Profile Settings
       settings: {
-        companyName: 'Marlin Sea Food',
+        companyName: 'Marine Seafoods',
         tagline: 'Seafood Procurement & Export Terminal',
         wharfStation: 'Terminal Gate 04, North Slipway',
         harborCity: 'Chennai Fishing Harbour, Tamil Nadu',
@@ -427,6 +498,11 @@ class Store {
         weightUnit: 'KG'
       }
     };
+  }
+
+  // Retrieve dynamic business name
+  getCompanyName() {
+    return this.state.settings?.companyName || 'Marine Seafoods';
   }
 
   // Subscribe to changes
@@ -645,6 +721,349 @@ class Store {
       totalPurchasedKg,
       totalExportedKg,
       totalOutstanding
+    };
+  }
+
+  // ----------------------------------------------------
+  // Authentication & Session Management
+  // ----------------------------------------------------
+  async login(email, password) {
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error?.message || 'Login failed. Please verify credentials.');
+      }
+
+      this.state.authToken = data.data.token;
+      this.state.user = data.data.user;
+      this.state.isAuthenticated = true;
+
+      localStorage.setItem('marine_erp_token', data.data.token);
+      localStorage.setItem('marine_erp_user', JSON.stringify(data.data.user));
+
+      // Role-based routing: Admin -> dashboard, Worker -> pos
+      if (data.data.user.role === 'WORKER') {
+        this.navigate('pos');
+      } else {
+        this.navigate('dashboard');
+      }
+      return data.data;
+    } catch (err) {
+      // Fallback local authentication if backend is offline or during demo
+      if (email.toLowerCase().includes('worker')) {
+        const workerUser = {
+          id: 'worker-local-id',
+          name: 'Counter Worker',
+          email: 'worker@marineseafoods.com',
+          role: 'WORKER',
+          station: 'Counter POS Terminal #1',
+          avatar: 'badge'
+        };
+        this.state.user = workerUser;
+        this.state.authToken = 'mock_worker_token';
+        this.state.isAuthenticated = true;
+        localStorage.setItem('marine_erp_user', JSON.stringify(workerUser));
+        localStorage.setItem('marine_erp_token', 'mock_worker_token');
+        this.navigate('pos');
+        return { user: workerUser };
+      } else if (email.toLowerCase().includes('admin')) {
+        const adminUser = {
+          id: 'admin-local-id',
+          name: 'Admin Manager',
+          email: 'admin@marineseafoods.com',
+          role: 'ADMIN',
+          station: 'Wharf Station #WS-409',
+          avatar: 'shield'
+        };
+        this.state.user = adminUser;
+        this.state.authToken = 'mock_admin_token';
+        this.state.isAuthenticated = true;
+        localStorage.setItem('marine_erp_user', JSON.stringify(adminUser));
+        localStorage.setItem('marine_erp_token', 'mock_admin_token');
+        this.navigate('dashboard');
+        return { user: adminUser };
+      }
+      throw err;
+    }
+  }
+
+  logout() {
+    this.state.authToken = null;
+    this.state.user = null;
+    this.state.isAuthenticated = false;
+    localStorage.removeItem('marine_erp_token');
+    localStorage.removeItem('marine_erp_user');
+    this.navigate('login');
+  }
+
+  // Authenticated API Fetch Helper
+  async apiFetch(url, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    };
+    if (this.state.authToken) {
+      headers['Authorization'] = `Bearer ${this.state.authToken}`;
+    }
+
+    try {
+      const response = await fetch(url, { ...options, headers });
+      if (response.status === 401) {
+        this.logout();
+        throw new Error('Your session has expired. Please log in again.');
+      }
+      if (response.status === 403) {
+        throw new Error("You don't have permission to perform this action.");
+      }
+      return await response.json();
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  // ----------------------------------------------------
+  // Fisherman Advance & Ledger Management
+  // ----------------------------------------------------
+  recordFishermanAdvance({ fishermanId, amount, paymentMethod = 'Cash', notes = '' }) {
+    const numAmount = Math.max(0, Number(amount));
+    if (numAmount <= 0) return null;
+
+    const fisherman = this.state.fishermen.find(f => f.id === fishermanId);
+    if (!fisherman) return null;
+
+    const prevAdvance = fisherman.outstanding || 0;
+    const newTotalAdvance = prevAdvance + numAmount;
+    fisherman.outstanding = newTotalAdvance;
+
+    const advanceEntry = {
+      id: `ADV-${Date.now().toString().slice(-6)}`,
+      fishermanId,
+      date: `${this.state.date}, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+      type: 'Advance Given',
+      amount: numAmount,
+      balanceAfter: newTotalAdvance,
+      paymentMethod,
+      notes: notes || 'Cash advance disbursed to boat master'
+    };
+
+    this.state.advanceLedgers.unshift(advanceEntry);
+    this.notify();
+    return advanceEntry;
+  }
+
+  getFishermanLedger(fishermanId) {
+    const fisherman = this.state.fishermen.find(f => f.id === fishermanId);
+    if (!fisherman) return [];
+
+    const entries = [];
+
+    // Catch collections & settlements
+    const bills = this.state.purchaseBills.filter(b => b.fishermanId === fishermanId);
+    bills.forEach(b => {
+      entries.push({
+        id: b.id,
+        date: `${b.date}, ${b.time}`,
+        type: 'Catch Collection',
+        amount: b.subtotal,
+        isCredit: true,
+        ref: b.id,
+        notes: `Landed ${b.totalKg} KG (${b.items.map(i => `${i.speciesName}`).join(', ')})`
+      });
+
+      if (b.advanceDeduction > 0) {
+        entries.push({
+          id: `ADJ-${b.id}`,
+          date: `${b.date}, ${b.time}`,
+          type: 'Advance Adjusted',
+          amount: b.advanceDeduction,
+          isCredit: false,
+          ref: b.id,
+          notes: `Adjusted against settlement ${b.id}`
+        });
+      }
+
+      if (b.grandTotal > 0) {
+        entries.push({
+          id: `PAY-${b.id}`,
+          date: `${b.date}, ${b.time}`,
+          type: 'Disbursed Payment',
+          amount: b.grandTotal,
+          isCredit: false,
+          ref: b.id,
+          notes: `Net cash payout via ${b.paymentMethod || 'Cash'}`
+        });
+      }
+    });
+
+    // Advance Disbursements
+    const advances = this.state.advanceLedgers.filter(a => a.fishermanId === fishermanId);
+    advances.forEach(a => {
+      entries.push({
+        id: a.id,
+        date: a.date,
+        type: a.type,
+        amount: a.amount,
+        isCredit: a.type === 'Advance Adjusted',
+        ref: a.ref || a.id,
+        notes: `${a.notes} [${a.paymentMethod || 'Cash'}]`
+      });
+    });
+
+    return entries.sort((a, b) => b.id.localeCompare(a.id));
+  }
+
+  // ----------------------------------------------------
+  // Wastage & Loss Accounting
+  // ----------------------------------------------------
+  recordWastage({ speciesId, quantityKg, reason, notes = '' }) {
+    const qty = Math.max(0, Number(quantityKg));
+    if (qty <= 0) return null;
+
+    const species = this.state.seafoodCatalog.find(s => s.id === speciesId);
+    if (!species) return null;
+
+    species.stock = Math.max(0, Number((species.stock - qty).toFixed(1)));
+    species.status = species.stock > 100 ? 'Healthy' : species.stock > 40 ? 'Low Stock' : 'Critical';
+
+    // Estimated procurement cost loss
+    const costRate = species.gradeA ? Math.round(species.gradeA * 0.8) : 320;
+    const estimatedLoss = Math.round(qty * costRate);
+
+    const record = {
+      id: `WST-${Date.now().toString().slice(-6)}`,
+      date: this.state.date,
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      speciesId,
+      speciesName: species.name,
+      quantityKg: qty,
+      reason,
+      estimatedLoss,
+      notes
+    };
+
+    this.state.wastageRecords.unshift(record);
+
+    this.state.stockMovements.unshift({
+      date: `${this.state.date}, ${record.time}`,
+      species: species.name,
+      type: 'Wastage / Loss',
+      changeKg: `-${qty.toFixed(1)}`,
+      balanceKg: species.stock.toFixed(1),
+      ref: record.id
+    });
+
+    this.notify();
+    return record;
+  }
+
+  recordStockAdjustment({ speciesId, quantityKg, reason, notes = '' }) {
+    const delta = Number(quantityKg);
+    if (isNaN(delta) || delta === 0) return null;
+
+    const species = this.state.seafoodCatalog.find(s => s.id === speciesId);
+    if (!species) return null;
+
+    species.stock = Math.max(0, Number((species.stock + delta).toFixed(1)));
+    species.status = species.stock > 100 ? 'Healthy' : species.stock > 40 ? 'Low Stock' : 'Critical';
+
+    const refId = `ADJ-${Date.now().toString().slice(-6)}`;
+    this.state.stockMovements.unshift({
+      date: `${this.state.date}, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+      species: species.name,
+      type: 'Stock Adjustment',
+      changeKg: `${delta > 0 ? '+' : ''}${delta.toFixed(1)}`,
+      balanceKg: species.stock.toFixed(1),
+      ref: refId
+    });
+
+    this.notify();
+    return { ref: refId, stock: species.stock };
+  }
+
+  // ----------------------------------------------------
+  // Daily Seafood Flow & Reconciliation Engine
+  // ----------------------------------------------------
+  getDailySeafoodFlow() {
+    let totalReceived = 0;
+    let totalSold = 0;
+    let totalWastage = 0;
+    let totalClosing = 0;
+    let totalWastageValue = 0;
+
+    const items = this.state.seafoodCatalog.map(species => {
+      // Opening is strictly 0 KG each day per B2B model
+      const openingKg = 0;
+
+      // Received today from fishermen collections
+      let receivedKg = 0;
+      this.state.purchaseBills.forEach(b => {
+        b.items.forEach(i => {
+          if (i.speciesId === species.id) {
+            receivedKg += (i.netKg || 0);
+          }
+        });
+      });
+
+      // Sold today from wholesale and export orders
+      let soldKg = 0;
+      this.state.exportBills.forEach(b => {
+        b.items.forEach(i => {
+          if ((i.speciesName && i.speciesName.toLowerCase().includes(species.id)) || (i.speciesId === species.id)) {
+            soldKg += (i.netKg || 0);
+          }
+        });
+      });
+
+      // Wastage today
+      let wastageKg = 0;
+      let wastageVal = 0;
+      this.state.wastageRecords.forEach(w => {
+        if (w.speciesId === species.id) {
+          wastageKg += (w.quantityKg || 0);
+          wastageVal += (w.estimatedLoss || 0);
+        }
+      });
+
+      // Reconciled remaining = Opening (0) + Received - Sold - Wastage
+      const remainingKg = Math.max(0, Number((openingKg + receivedKg - soldKg - wastageKg).toFixed(1)));
+
+      totalReceived += receivedKg;
+      totalSold += soldKg;
+      totalWastage += wastageKg;
+      totalClosing += remainingKg;
+      totalWastageValue += wastageVal;
+
+      return {
+        id: species.id,
+        name: species.name,
+        category: species.category,
+        openingKg,
+        receivedKg,
+        soldKg,
+        wastageKg,
+        remainingKg,
+        wastageLoss: wastageVal,
+        isReconciled: remainingKg === 0
+      };
+    });
+
+    return {
+      summary: {
+        openingKg: 0,
+        receivedKg: totalReceived,
+        soldKg: totalSold,
+        wastageKg: totalWastage,
+        closingKg: totalClosing,
+        expectedClosingKg: 0,
+        isReconciled: totalClosing === 0,
+        totalWastageValue
+      },
+      items
     };
   }
 }

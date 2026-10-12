@@ -37,6 +37,29 @@ export const stockMovementQuerySchema = z.object({
 });
 
 export const seafoodGradeParamSchema = z.object({
-  seafoodId: z.string().uuid('seafoodId must be a valid UUID'),
-  gradeId: z.string().uuid('gradeId must be a valid UUID')
+  seafoodId: z.string().min(1, 'seafoodId must be provided'),
+  gradeId: z.string().min(1, 'gradeId must be provided')
 });
+
+export const recordWastageSchema = z.object({
+  seafoodId: z.string().min(1, 'seafoodId is required'),
+  gradeId: z.string().min(1, 'gradeId is required'),
+  quantityKg: z.union([z.string(), z.number()]).transform((val) => String(val)),
+  reason: z.string().trim().min(1, 'Reason for wastage is required'),
+  notes: z.string().trim().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional()
+});
+
+export const recordAdjustmentSchema = z.object({
+  seafoodId: z.string().min(1, 'seafoodId is required'),
+  gradeId: z.string().min(1, 'gradeId is required'),
+  quantityKg: z.union([z.string(), z.number()]).transform((val) => String(val)),
+  reason: z.string().trim().min(1, 'Reason for adjustment is required'),
+  notes: z.string().trim().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional()
+});
+
+export const dailyFlowQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
+

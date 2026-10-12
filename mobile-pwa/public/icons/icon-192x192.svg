@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a2540" />
+      <stop offset="100%" stop-color="#000f22" />
+    </linearGradient>
+    <linearGradient id="marineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488" />
+      <stop offset="100%" stop-color="#86f2e4" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bgGrad)" />
+  <circle cx="96" cy="96" r="76" fill="none" stroke="#0d9488" stroke-width="3" stroke-dasharray="6 4" opacity="0.6"/>
+  <!-- Anchor & Marine Symbol -->
+  <g transform="translate(48, 40) scale(2)">
+    <circle cx="24" cy="10" r="4" fill="none" stroke="url(#marineGrad)" stroke-width="2.5" />
+    <line x1="24" y1="14" x2="24" y2="38" stroke="url(#marineGrad)" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="15" y1="20" x2="33" y2="20" stroke="url(#marineGrad)" stroke-width="2.5" stroke-linecap="round" />
+    <path d="M 12 28 C 12 39, 36 39, 36 28" fill="none" stroke="url(#marineGrad)" stroke-width="2.5" stroke-linecap="round" />
+    <polyline points="9,26 12,28 15,26" fill="none" stroke="url(#marineGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <polyline points="33,26 36,28 39,26" fill="none" stroke="url(#marineGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+  <!-- Fish Wave accent -->
+  <path d="M 50 148 Q 96 138 142 148" fill="none" stroke="#86f2e4" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+  <text x="96" y="170" text-anchor="middle" fill="#d2e4ff" font-family="system-ui, sans-serif" font-size="12" font-weight="700" letter-spacing="1.5">MARINE POS</text>
+</svg>

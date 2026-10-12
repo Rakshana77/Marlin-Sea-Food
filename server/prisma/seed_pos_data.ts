@@ -1,95 +1,120 @@
-import { PrismaClient, DailyRateStatus } from '@prisma/client';
+import { PrismaClient, DailyRateStatus, MasterStatus } from '@prisma/client';
 import { logger } from '../src/lib/logger';
 
 const prisma = new PrismaClient();
 
 async function seedPosData() {
-  logger.info('🐟 Seeding POS Seafood Catalog, Daily Rates, and Stock...');
+  logger.info('🐟 Seeding POS Seafood Catalog for Squid, Crab, and Fish with Grades...');
 
-  // 1. Get or create Categories
-  const categories = await prisma.seafoodCategory.findMany();
-  const getCatId = (name: string) => categories.find(c => c.name.toLowerCase().includes(name.toLowerCase()))?.id || categories[0].id;
+  // 1. Categories
+  const categories = [
+    { name: 'Squid', description: 'Squid, Cuttlefish, and Cephalopods' },
+    { name: 'Crab', description: 'Sea Crabs, Mud Crabs, and Shellfish' },
+    { name: 'Fish', description: 'Freshwater and Marine Fin Fishes' }
+  ];
 
-  // 2. Get Grades
-  const grades = await prisma.seafoodGrade.findMany();
-  const gradeA = grades.find(g => g.name === 'Grade A') || grades[0];
-  const gradeB = grades.find(g => g.name === 'Grade B') || grades[1];
+  const catMap: Record<string, string> = {};
+  for (const c of categories) {
+    const record = await prisma.seafoodCategory.upsert({
+      where: { name: c.name },
+      update: { description: c.description, active: true },
+      create: { name: c.name, description: c.description, active: true }
+    });
+    catMap[c.name] = record.id;
+  }
 
-  // 3. Define Stitch catalog items
+  // 2. Grades
+  const grades = [
+    { name: 'Grade A', description: 'Export quality, top freshness tier' },
+    { name: 'Grade B', description: 'Standard market quality tier' },
+    { name: 'Grade C', description: 'Commercial / local tier' }
+  ];
+
+  const gradeMap: Record<string, string> = {};
+  for (const g of grades) {
+    const record = await prisma.seafoodGrade.upsert({
+      where: { name: g.name },
+      update: { description: g.description, active: true },
+      create: { name: g.name, description: g.description, active: true }
+    });
+    gradeMap[g.name] = record.id;
+  }
+
+  // 3. Catalog items
   const catalog = [
+    // SQUID
     {
       name: 'Squid (Grade A)',
       catName: 'Squid',
-      unit: 'KG',
-      rate: '470.00',
-      stockKg: '125.000',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'Blue Sea Crab (Live)',
-      catName: 'Crab',
-      unit: 'KG',
-      rate: '700.00',
-      stockKg: '42.500',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'Tiger Prawn (10/20)',
-      catName: 'Prawn',
-      unit: 'KG',
-      rate: '650.00',
-      stockKg: '8.200',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'King Fish / Surmai',
-      catName: 'Fish',
-      unit: 'KG',
-      rate: '850.00',
-      stockKg: '31.000',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'White Prawn (Vannamei)',
-      catName: 'Prawn',
-      unit: 'KG',
-      rate: '440.00',
-      stockKg: '64.000',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'Rock Lobster (Prime)',
-      catName: 'Crab',
-      unit: 'KG',
-      rate: '1700.00',
-      stockKg: '0.000',
-      gradeId: gradeA.id
-    },
-    {
-      name: 'Octopus (Baby Whole)',
-      catName: 'Squid',
-      unit: 'KG',
-      rate: '330.00',
-      stockKg: '18.500',
-      gradeId: gradeA.id
+      rates: { 'Grade A': '470.00', 'Grade B': '390.00', 'Grade C': '310.00' },
+      stock: { 'Grade A': '45.000', 'Grade B': '30.000', 'Grade C': '18.000' }
     },
     {
       name: 'Cuttlefish (Sepia)',
       catName: 'Squid',
-      unit: 'KG',
-      rate: '410.00',
-      stockKg: '22.000',
-      gradeId: gradeA.id
+      rates: { 'Grade A': '410.00', 'Grade B': '340.00', 'Grade C': '270.00' },
+      stock: { 'Grade A': '35.000', 'Grade B': '22.000', 'Grade C': '14.000' }
+    },
+    {
+      name: 'Octopus (Baby Whole)',
+      catName: 'Squid',
+      rates: { 'Grade A': '350.00', 'Grade B': '290.00', 'Grade C': '220.00' },
+      stock: { 'Grade A': '25.000', 'Grade B': '15.000', 'Grade C': '10.000' }
+    },
+
+    // CRAB
+    {
+      name: 'Blue Sea Crab (Live)',
+      catName: 'Crab',
+      rates: { 'Grade A': '700.00', 'Grade B': '560.00', 'Grade C': '420.00' },
+      stock: { 'Grade A': '38.000', 'Grade B': '24.000', 'Grade C': '15.000' }
+    },
+    {
+      name: 'Mud Crab (Live)',
+      catName: 'Crab',
+      rates: { 'Grade A': '760.00', 'Grade B': '620.00', 'Grade C': '480.00' },
+      stock: { 'Grade A': '28.000', 'Grade B': '18.000', 'Grade C': '12.000' }
+    },
+    {
+      name: 'Three Spot Crab',
+      catName: 'Crab',
+      rates: { 'Grade A': '520.00', 'Grade B': '420.00', 'Grade C': '320.00' },
+      stock: { 'Grade A': '22.000', 'Grade B': '14.000', 'Grade C': '8.000' }
+    },
+
+    // FISH
+    {
+      name: 'King Fish / Surmai',
+      catName: 'Fish',
+      rates: { 'Grade A': '850.00', 'Grade B': '720.00', 'Grade C': '580.00' },
+      stock: { 'Grade A': '42.000', 'Grade B': '26.000', 'Grade C': '16.000' }
+    },
+    {
+      name: 'Seer Fish (Vanjaram)',
+      catName: 'Fish',
+      rates: { 'Grade A': '950.00', 'Grade B': '810.00', 'Grade C': '660.00' },
+      stock: { 'Grade A': '32.000', 'Grade B': '20.000', 'Grade C': '12.000' }
+    },
+    {
+      name: 'White Pomfret',
+      catName: 'Fish',
+      rates: { 'Grade A': '820.00', 'Grade B': '690.00', 'Grade C': '540.00' },
+      stock: { 'Grade A': '28.000', 'Grade B': '18.000', 'Grade C': '10.000' }
+    },
+    {
+      name: 'Black Pomfret',
+      catName: 'Fish',
+      rates: { 'Grade A': '640.00', 'Grade B': '530.00', 'Grade C': '410.00' },
+      stock: { 'Grade A': '24.000', 'Grade B': '16.000', 'Grade C': '9.000' }
     }
   ];
 
-  const todayStr = '2026-09-30';
-  const todayDate = new Date(`${todayStr}T00:00:00.000Z`);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
 
   for (const item of catalog) {
-    const categoryId = getCatId(item.catName);
+    const categoryId = catMap[item.catName];
 
-    // Upsert Seafood
     let sf = await prisma.seafood.findFirst({
       where: { name: item.name }
     });
@@ -99,73 +124,79 @@ async function seedPosData() {
         data: {
           name: item.name,
           categoryId,
-          unit: item.unit
+          unit: 'KG',
+          status: MasterStatus.ACTIVE
         }
       });
-      logger.info(`Created Seafood: ${item.name} (${sf.id})`);
-    }
-
-    // Upsert DailyRate for today
-    const existingRate = await prisma.dailyRate.findFirst({
-      where: {
-        seafoodId: sf.id,
-        gradeId: item.gradeId,
-        rateDate: todayDate
-      }
-    });
-
-    if (!existingRate) {
-      await prisma.dailyRate.create({
-        data: {
-          seafoodId: sf.id,
-          gradeId: item.gradeId,
-          rateDate: todayDate,
-          purchaseRate: (parseFloat(item.rate) * 0.8).toFixed(2),
-          sellingRate: item.rate,
-          status: DailyRateStatus.PUBLISHED
-        }
-      });
-      logger.info(`Published DailyRate for ${item.name}: ₹${item.rate}/KG`);
-    } else if (existingRate.status !== DailyRateStatus.PUBLISHED) {
-      await prisma.dailyRate.update({
-        where: { id: existingRate.id },
-        data: {
-          sellingRate: item.rate,
-          status: DailyRateStatus.PUBLISHED
-        }
-      });
-    }
-
-    // Upsert Stock
-    const existingStock = await prisma.stock.findUnique({
-      where: {
-        seafoodId_gradeId: {
-          seafoodId: sf.id,
-          gradeId: item.gradeId
-        }
-      }
-    });
-
-    if (!existingStock) {
-      await prisma.stock.create({
-        data: {
-          seafoodId: sf.id,
-          gradeId: item.gradeId,
-          quantityKg: item.stockKg
-        }
-      });
-      logger.info(`Initialized Stock for ${item.name}: ${item.stockKg} KG`);
+      logger.info(`Created Seafood: ${item.name}`);
     } else {
-      await prisma.stock.update({
-        where: { id: existingStock.id },
+      sf = await prisma.seafood.update({
+        where: { id: sf.id },
         data: {
-          quantityKg: item.stockKg
+          categoryId,
+          unit: 'KG',
+          status: MasterStatus.ACTIVE
         }
       });
+    }
+
+    // Seed Rates & Stock for each grade
+    for (const [gradeName, rateStr] of Object.entries(item.rates)) {
+      const gradeId = gradeMap[gradeName];
+      if (!gradeId) continue;
+
+      const stockKg = item.stock[gradeName as keyof typeof item.stock] || '20.000';
+
+      // Upsert Stock
+      await prisma.stock.upsert({
+        where: {
+          seafoodId_gradeId: {
+            seafoodId: sf.id,
+            gradeId
+          }
+        },
+        update: { quantityKg: stockKg },
+        create: {
+          seafoodId: sf.id,
+          gradeId,
+          quantityKg: stockKg
+        }
+      });
+
+      // Upsert Daily Rate
+      const existingRate = await prisma.dailyRate.findFirst({
+        where: {
+          seafoodId: sf.id,
+          gradeId,
+          rateDate: today
+        }
+      });
+
+      if (!existingRate) {
+        await prisma.dailyRate.create({
+          data: {
+            seafoodId: sf.id,
+            gradeId,
+            rateDate: today,
+            sellingRate: rateStr,
+            purchaseRate: (parseFloat(rateStr) * 0.82).toFixed(2),
+            status: DailyRateStatus.PUBLISHED
+          }
+        });
+      } else {
+        await prisma.dailyRate.update({
+          where: { id: existingRate.id },
+          data: {
+            sellingRate: rateStr,
+            purchaseRate: (parseFloat(rateStr) * 0.82).toFixed(2),
+            status: DailyRateStatus.PUBLISHED
+          }
+        });
+      }
     }
   }
 
-  logger.info('✅ POS Seed Data complete!');
+  logger.info('✅ Clean POS Seed Data complete with Squid, Crab, and Fish!');
 }
 
 seedPosData()

@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Space Grotesk", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input, textarea, select {
+    user-select: auto;
+    -webkit-user-select: auto;
+  }
+
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Touch friendly minimum sizing */
+.touch-target {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+/* Safe area padding utilities */
+.pb-safe {
+  padding-bottom: calc(4.5rem + var(--safe-bottom));
+}
+
+.pt-safe {
+  padding-top: calc(1rem + var(--safe-top));
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+/* Normal Screen Mode: Hide Print Portal */
+#print-root {
+  display: none;
+}
+
+/* POS Thermal Receipt Print Styles - 1-Page Isolated Slip */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* When printing receipts, completely hide the entire main React application */
+  body.is-printing-receipt #root,
+  body:has(#print-root:not(:empty)) #root {
+    display: none !important;
+  }
+
+  /* Render ONLY the isolated receipt in print flow */
+  body.is-printing-receipt #print-root,
+  body:has(#print-root:not(:empty)) #print-root {
+    display: block !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 4mm 2.5mm !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  body.is-printing-receipt #print-root *,
+  body:has(#print-root:not(:empty)) #print-root * {
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  body.is-printing-receipt #print-root .border-dashed,
+  body:has(#print-root:not(:empty)) #print-root .border-dashed {
+    border-style: dashed !important;
+    border-color: #555555 !important;
+  }
+
+  /* Hide navigation, headers, footers, buttons */
+  nav, header, footer, button, .no-print, [role="navigation"] {
+    display: none !important;
+  }
+}
+

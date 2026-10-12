@@ -17,14 +17,22 @@ const positiveWeightSchema = z
 export const saleItemInputSchema = z.object({
   seafoodId: z.string().min(1, 'seafoodId is required'),
   gradeId: z.string().min(1, 'gradeId is required'),
-  quantityKg: positiveWeightSchema
+  quantityKg: positiveWeightSchema,
+  sellingRate: decimalAmountSchema.optional(),
+  unitPrice: decimalAmountSchema.optional()
 });
 
 export const createSaleSchema = z.object({
-  customerId: z.string().trim().optional().default('walk-in'),
+  saleType: z.enum(['WHOLESALE', 'EXPORT']).optional(),
+  customerId: z.string().trim().optional(),
+  exportCompanyId: z.string().trim().optional().nullable(),
+  exportRef: z.string().trim().max(100).optional().nullable(),
+  dispatchDate: z.string().optional().nullable(),
+  destinationPort: z.string().trim().max(100).optional().nullable(),
   saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'saleDate must be formatted as YYYY-MM-DD'),
   items: z.array(saleItemInputSchema).min(1, 'Sale must contain at least one item'),
   discount: decimalAmountSchema.optional().default('0.00'),
+  taxAmount: decimalAmountSchema.optional().default('0.00'),
   payment: z
     .object({
       method: z.enum(['CASH', 'UPI', 'BANK_TRANSFER', 'CREDIT']),
@@ -48,13 +56,18 @@ export const saleQuerySchema = z.object({
     .optional()
     .default('20')
     .transform((val) => Math.min(100, Math.max(1, parseInt(val, 10) || 20))),
+  type: z.enum(['WHOLESALE', 'EXPORT']).optional(),
+  saleType: z.enum(['WHOLESALE', 'EXPORT']).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   customerId: z.string().optional(),
+  exportCompanyId: z.string().optional(),
   seafoodId: z.string().uuid().optional(),
   gradeId: z.string().uuid().optional(),
   paymentStatus: z.enum(['PENDING', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
   status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED']).optional(),
+  invoiceNumber: z.string().trim().optional(),
+  billNumber: z.string().trim().optional(),
   search: z.string().trim().optional()
 });

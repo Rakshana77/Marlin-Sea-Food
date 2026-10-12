@@ -2,8 +2,19 @@ import { prisma } from '../lib/prisma';
 import { PurchaseBillRepository, PurchaseBillWithRelations } from '../repositories/purchaseBill.repository';
 import { AppError } from '../utils/appError';
 import { generatePurchaseBillNumber } from '../utils/billNumber';
+import { getMonotonicDate } from '../utils/monotonicDate';
+import { assertBusinessDateOpen } from '../utils/dayEnd';
 import { DailyRateService } from './dailyRate.service';
-import { Prisma, PurchaseBillStatus, PaymentMethod, PaymentStatus, MasterStatus } from '@prisma/client';
+import {
+  Prisma,
+  PurchaseBillStatus,
+  PaymentMethod,
+  PaymentStatus,
+  MasterStatus,
+  AdvanceEntryType,
+  AdvanceStatus,
+  LedgerDirection
+} from '@prisma/client';
 
 export interface CreatePurchaseBillItemInput {
   seafoodId: string;
@@ -17,6 +28,7 @@ export interface CreatePurchaseBillInput {
   billDate: string;
   items: CreatePurchaseBillItemInput[];
   discount?: string;
+  advanceDeducted?: string | number;
   payment?: {
     amount?: string;
     method: PaymentMethod;
@@ -65,6 +77,8 @@ export interface FormattedPurchaseBill {
   subtotal: string;
   discount: string;
   grandTotal: string;
+  advanceDeducted: string;
+  netPayableCash: string;
   paidAmount: string;
   outstandingAmount: string;
   paymentStatus: PaymentStatus;
@@ -107,6 +121,8 @@ export class PurchaseBillService {
       subtotal: new Prisma.Decimal(bill.subtotal).toFixed(2),
       discount: new Prisma.Decimal(bill.discount).toFixed(2),
       grandTotal: new Prisma.Decimal(bill.grandTotal).toFixed(2),
+      advanceDeducted: new Prisma.Decimal(bill.advanceDeducted ?? 0).toFixed(2),
+      netPayableCash: new Prisma.Decimal(bill.netPayableCash ?? 0).toFixed(2),
       paidAmount: new Prisma.Decimal(bill.paidAmount).toFixed(2),
       outstandingAmount: new Prisma.Decimal(bill.outstandingAmount).toFixed(2),
       paymentStatus: bill.paymentStatus,
@@ -130,7 +146,15 @@ export class PurchaseBillService {
     input: CreatePurchaseBillInput,
     userId?: string
   ): Promise<FormattedPurchaseBill> {
-    const { fishermanId, billDate, items, discount = '0.00', payment, notes } = input;
+    const {
+      fishermanId,
+      billDate,
+      items,
+      discount = '0.00',
+      advanceDeducted = '0.00',
+      payment,
+      notes
+    } = input;
 
     if (!items || items.length === 0) {
       throw AppError.badRequest('Purchase bill must contain at least one item', 'EMPTY_PURCHASE_ITEMS');
@@ -154,18 +178,33 @@ export class PurchaseBillService {
     // Run the complete purchase flow in one atomic transaction
     const createdBill = await prisma.$transaction(
       async (tx) => {
-        // 1. Validate fisherman
-        const fisherman = await tx.fisherman.findFirst({
-          where: { id: fishermanId, deletedAt: null }
-        });
+        // 1. Validate fisherman and lock row FOR UPDATE to prevent race conditions on advances
+        const lockedFishermen = await tx.$queryRaw<Array<{ id: string; name: string; status: MasterStatus }>>`
+          SELECT id, name, status
+          FROM "Fisherman"
+          WHERE id = ${fishermanId} AND "deletedAt" IS NULL
+          FOR UPDATE
+        `;
 
-        if (!fisherman) {
+        if (!lockedFishermen || lockedFishermen.length === 0) {
           throw AppError.notFound('Fisherman not found', 'FISHERMAN_NOT_FOUND');
         }
 
-        if (fisherman.status !== MasterStatus.ACTIVE) {
+        if (lockedFishermen[0].status !== MasterStatus.ACTIVE) {
           throw AppError.badRequest('Fisherman is inactive', 'FISHERMAN_INACTIVE');
         }
+
+        // Validate business date is not closed
+        await assertBusinessDateOpen(tx, billDateObj);
+
+        // Fetch current advance balance under the row lock
+        const latestAdvanceEntry = await tx.fishermanAdvanceLedger.findFirst({
+          where: { fishermanId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+        });
+        const currentAdvanceBalance = latestAdvanceEntry
+          ? new Prisma.Decimal(latestAdvanceEntry.balanceAfter)
+          : new Prisma.Decimal('0.00');
 
         // 2. Validate seafood, grades, quantities, and published daily rates
         let calculatedTotalKg = new Prisma.Decimal(0);
@@ -223,7 +262,9 @@ export class PurchaseBillService {
             );
           }
 
-          const rateSnapshot = new Prisma.Decimal(dailyRate.purchaseRate);
+          const rateSnapshot = item.purchaseRate !== undefined
+            ? new Prisma.Decimal(item.purchaseRate)
+            : new Prisma.Decimal(dailyRate.purchaseRate);
           if (rateSnapshot.lessThan(0)) {
             throw AppError.badRequest('Purchase rate cannot be negative', 'INVALID_RATE');
           }
@@ -254,10 +295,29 @@ export class PurchaseBillService {
           throw AppError.badRequest('Discount cannot exceed subtotal', 'INVALID_DISCOUNT');
         }
 
-        // 4. Calculate grand total
+        // 4. Calculate grand total, advance deduction, and net payable cash
         const grandTotal = calculatedSubtotal.sub(discountDecimal);
 
-        // 5. Payment and outstanding balance logic
+        const advanceDeductedDecimal = new Prisma.Decimal(advanceDeducted || '0.00');
+        if (advanceDeductedDecimal.lessThan(0)) {
+          throw AppError.badRequest('Advance deduction cannot be negative', 'INVALID_ADVANCE_DEDUCTION');
+        }
+        if (advanceDeductedDecimal.greaterThan(grandTotal)) {
+          throw AppError.badRequest(
+            `Advance deduction (₹${advanceDeductedDecimal.toFixed(2)}) cannot exceed grand total (₹${grandTotal.toFixed(2)})`,
+            'EXCESSIVE_ADVANCE_DEDUCTION'
+          );
+        }
+        if (advanceDeductedDecimal.greaterThan(currentAdvanceBalance)) {
+          throw AppError.badRequest(
+            `Advance deduction (₹${advanceDeductedDecimal.toFixed(2)}) cannot exceed fisherman's outstanding advance balance (₹${currentAdvanceBalance.toFixed(2)})`,
+            'EXCESSIVE_ADVANCE_DEDUCTION'
+          );
+        }
+
+        const netPayableCash = grandTotal.sub(advanceDeductedDecimal);
+
+        // 5. Payment and outstanding balance logic against netPayableCash
         let paymentMethod: PaymentMethod = PaymentMethod.CREDIT;
         let requestedAmount = new Prisma.Decimal(0);
         let referenceNumber: string | undefined;
@@ -274,36 +334,36 @@ export class PurchaseBillService {
           throw AppError.badRequest('Payment amount cannot be negative', 'INVALID_PAYMENT_AMOUNT');
         }
 
-        if (requestedAmount.greaterThan(grandTotal)) {
+        if (requestedAmount.greaterThan(netPayableCash)) {
           throw AppError.badRequest(
-            'Payment amount cannot exceed grand total',
+            `Payment amount (₹${requestedAmount.toFixed(2)}) cannot exceed net payable cash (₹${netPayableCash.toFixed(2)})`,
             'INVALID_PAYMENT_AMOUNT'
           );
         }
 
         let paidAmount = new Prisma.Decimal(0);
-        let outstandingAmount = grandTotal;
+        let outstandingAmount = netPayableCash;
         let paymentStatus: PaymentStatus = PaymentStatus.PENDING;
 
         if (paymentMethod === PaymentMethod.CREDIT) {
           if (requestedAmount.greaterThan(0)) {
             paidAmount = requestedAmount;
-            outstandingAmount = grandTotal.sub(paidAmount);
-            if (paidAmount.equals(grandTotal)) {
+            outstandingAmount = netPayableCash.sub(paidAmount);
+            if (paidAmount.equals(netPayableCash)) {
               paymentStatus = PaymentStatus.PAID;
             } else {
               paymentStatus = PaymentStatus.PARTIALLY_PAID;
             }
           } else {
             paidAmount = new Prisma.Decimal(0);
-            outstandingAmount = grandTotal;
-            paymentStatus = PaymentStatus.PENDING;
+            outstandingAmount = netPayableCash;
+            paymentStatus = netPayableCash.isZero() ? PaymentStatus.PAID : PaymentStatus.PENDING;
           }
         } else {
           // CASH, UPI, BANK_TRANSFER
           paidAmount = requestedAmount;
-          outstandingAmount = grandTotal.sub(paidAmount);
-          if (paidAmount.equals(grandTotal)) {
+          outstandingAmount = netPayableCash.sub(paidAmount);
+          if (netPayableCash.isZero() || paidAmount.equals(netPayableCash)) {
             paymentStatus = PaymentStatus.PAID;
           } else if (paidAmount.greaterThan(0)) {
             paymentStatus = PaymentStatus.PARTIALLY_PAID;
@@ -325,6 +385,8 @@ export class PurchaseBillService {
             subtotal: calculatedSubtotal,
             discount: discountDecimal,
             grandTotal,
+            advanceDeducted: advanceDeductedDecimal,
+            netPayableCash,
             paidAmount,
             outstandingAmount,
             paymentStatus,
@@ -349,7 +411,7 @@ export class PurchaseBillService {
           });
         }
 
-        // 9. Create Payment record if paidAmount > 0 or if explicitly logged
+        // 9. Create Payment record if payment was provided
         if (payment) {
           await tx.payment.create({
             data: {
@@ -357,7 +419,7 @@ export class PurchaseBillService {
               amount: paidAmount,
               paymentMethod,
               paymentStatus,
-              paymentDate: new Date(),
+              paymentDate: billDateObj,
               referenceNumber: referenceNumber || null,
               notes: paymentNotes || null,
               createdById: userId || null
@@ -365,55 +427,121 @@ export class PurchaseBillService {
           });
         }
 
-        // 10. Update Stock and create StockMovement for each purchased item
-        for (const item of validatedItems) {
-          // Check if Stock record exists
-          const existingStock = await tx.stock.findUnique({
-            where: {
-              seafoodId_gradeId: {
-                seafoodId: item.seafoodId,
-                gradeId: item.gradeId
-              }
+        // 10. Record advance recovery deduction in FishermanAdvanceLedger
+        if (advanceDeductedDecimal.greaterThan(0)) {
+          const newAdvanceBalance = currentAdvanceBalance
+            .sub(advanceDeductedDecimal)
+            .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+          await tx.fishermanAdvanceLedger.create({
+            data: {
+              fishermanId,
+              advanceId: null,
+              entryType: AdvanceEntryType.RECOVERY_DEDUCTION,
+              direction: LedgerDirection.CREDIT,
+              amount: advanceDeductedDecimal,
+              balanceBefore: currentAdvanceBalance,
+              balanceAfter: newAdvanceBalance,
+              referenceType: 'PURCHASE_BILL_DEDUCTION',
+              referenceId: purchaseBill.id,
+              notes: `Catch bill advance deduction against Purchase Bill ${billNumber}`,
+              createdById: userId || null,
+              createdAt: getMonotonicDate()
             }
           });
 
-          let balanceBefore = new Prisma.Decimal('0.00');
-          let balanceAfter = item.quantityKg;
-          let stockId: string;
+          // If debt balance reaches zero, mark active advances as FULLY_RECOVERED
+          if (newAdvanceBalance.isZero()) {
+            await tx.fishermanAdvance.updateMany({
+              where: { fishermanId, status: AdvanceStatus.ACTIVE },
+              data: { status: AdvanceStatus.FULLY_RECOVERED }
+            });
+          }
+        }
 
-          if (existingStock) {
-            balanceBefore = new Prisma.Decimal(existingStock.quantityKg);
-            balanceAfter = balanceBefore.add(item.quantityKg);
-            stockId = existingStock.id;
+        // 10. Update Stock and create StockMovement with WAC calculation
+        // Sort items deterministically by seafoodId and gradeId to prevent deadlocks
+        const sortedItems = [...validatedItems].sort((a, b) => {
+          const comp = a.seafoodId.localeCompare(b.seafoodId);
+          return comp !== 0 ? comp : a.gradeId.localeCompare(b.gradeId);
+        });
+
+        for (const item of sortedItems) {
+          // Lock the stock row FOR UPDATE
+          const lockedRows = await tx.$queryRaw<Array<{
+            id: string;
+            quantityKg: string | number | Prisma.Decimal;
+            averageCost: string | number | Prisma.Decimal;
+            totalValue: string | number | Prisma.Decimal;
+          }>>`
+            SELECT id, "quantityKg", "averageCost", "totalValue"
+            FROM "Stock"
+            WHERE "seafoodId" = ${item.seafoodId} AND "gradeId" = ${item.gradeId}
+            FOR UPDATE
+          `;
+
+          const qIn = item.quantityKg;
+          const pIn = item.purchaseRate;
+          const vIn = qIn.mul(pIn).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+          let stockId: string;
+          let balanceBefore = new Prisma.Decimal('0.00');
+          let balanceAfter = qIn;
+          let newAverageCost = pIn;
+          let newTotalValue = vIn;
+
+          if (lockedRows && lockedRows.length > 0) {
+            stockId = lockedRows[0].id;
+            balanceBefore = new Prisma.Decimal(lockedRows[0].quantityKg);
+            const oldAverageCost = new Prisma.Decimal(lockedRows[0].averageCost || 0);
+            const oldTotalValue = new Prisma.Decimal(lockedRows[0].totalValue || 0);
+
+            balanceAfter = balanceBefore.add(qIn);
+            const combinedVal = oldTotalValue.add(vIn);
+
+            if (balanceBefore.greaterThan(0) && oldAverageCost.greaterThan(0)) {
+              newAverageCost = combinedVal.div(balanceAfter).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+            } else {
+              newAverageCost = pIn;
+            }
+            newTotalValue = balanceAfter.mul(newAverageCost).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
             await tx.stock.update({
-              where: { id: existingStock.id },
-              data: { quantityKg: balanceAfter }
+              where: { id: stockId },
+              data: {
+                quantityKg: balanceAfter,
+                averageCost: newAverageCost,
+                totalValue: newTotalValue
+              }
             });
           } else {
             const newStock = await tx.stock.create({
               data: {
                 seafoodId: item.seafoodId,
                 gradeId: item.gradeId,
-                quantityKg: item.quantityKg
+                quantityKg: balanceAfter,
+                averageCost: newAverageCost,
+                totalValue: newTotalValue
               }
             });
             stockId = newStock.id;
           }
 
-          // Create positive StockMovement of type PURCHASE
+          // Create positive StockMovement of type PURCHASE with authoritative unit and total cost
           await tx.stockMovement.create({
             data: {
               stockId,
               seafoodId: item.seafoodId,
               gradeId: item.gradeId,
               movementType: 'PURCHASE',
-              quantityKg: item.quantityKg,
+              quantityKg: qIn,
               balanceBefore,
               balanceAfter,
+              unitCost: pIn,
+              totalCost: vIn,
               referenceType: 'PURCHASE_BILL',
               referenceId: purchaseBill.id,
-              movementDate: new Date(),
+              movementDate: billDateObj,
               notes: `Purchase Bill ${billNumber}`,
               createdById: userId || null
             }
@@ -613,5 +741,173 @@ export class PurchaseBillService {
     }
 
     throw AppError.badRequest('Invalid purchase bill modification', 'INVALID_PURCHASE_OPERATION');
+  }
+
+  async cancelPurchaseBill(id: string, userId?: string): Promise<FormattedPurchaseBill> {
+    const existing = await this.repo.findById(id);
+    if (!existing) {
+      throw AppError.notFound('Purchase bill not found', 'PURCHASE_BILL_NOT_FOUND');
+    }
+
+    if (existing.status === PurchaseBillStatus.CANCELLED) {
+      throw AppError.badRequest('Purchase bill is already cancelled', 'PURCHASE_BILL_ALREADY_CANCELLED');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Validate business date is not closed
+      await assertBusinessDateOpen(tx, existing.billDate);
+      await assertBusinessDateOpen(tx, new Date());
+
+      // 1. Mark PurchaseBill as CANCELLED
+      await tx.purchaseBill.update({
+        where: { id },
+        data: {
+          status: PurchaseBillStatus.CANCELLED,
+          paymentStatus: PaymentStatus.CANCELLED,
+          updatedById: userId || null
+        }
+      });
+
+      // 2. Mark Payments as CANCELLED
+      await tx.payment.updateMany({
+        where: { purchaseBillId: id },
+        data: { paymentStatus: PaymentStatus.CANCELLED }
+      });
+
+      // 3. Compensating Advance Recovery Reversal if advance was deducted
+      const advanceDeductedDec = new Prisma.Decimal(existing.advanceDeducted || 0);
+      if (advanceDeductedDec.greaterThan(0)) {
+        // Lock fisherman row FOR UPDATE before locking stock rows (deterministic lock hierarchy)
+        await tx.$queryRaw`
+          SELECT id, name
+          FROM "Fisherman"
+          WHERE id = ${existing.fishermanId}
+          FOR UPDATE
+        `;
+
+        const latestAdvance = await tx.fishermanAdvanceLedger.findFirst({
+          where: { fishermanId: existing.fishermanId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+        });
+
+        const balBefore = latestAdvance ? new Prisma.Decimal(latestAdvance.balanceAfter) : new Prisma.Decimal('0.00');
+        const balAfter = balBefore.add(advanceDeductedDec).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+        await tx.fishermanAdvanceLedger.create({
+          data: {
+            fishermanId: existing.fishermanId,
+            advanceId: null,
+            entryType: AdvanceEntryType.RECOVERY_REVERSAL,
+            direction: LedgerDirection.DEBIT,
+            amount: advanceDeductedDec,
+            balanceBefore: balBefore,
+            balanceAfter: balAfter,
+            referenceType: 'PURCHASE_CANCEL',
+            referenceId: id,
+            notes: `Compensating reversal of advance deduction from cancelled Purchase Bill ${existing.billNumber}`,
+            createdById: userId || null,
+            createdAt: getMonotonicDate()
+          }
+        });
+
+        // Reopen any FULLY_RECOVERED advances back to ACTIVE since debt balance is restored
+        await tx.fishermanAdvance.updateMany({
+          where: { fishermanId: existing.fishermanId, status: AdvanceStatus.FULLY_RECOVERED },
+          data: { status: AdvanceStatus.ACTIVE }
+        });
+      }
+
+      // 4. Compensating Stock Reversals with strict quantity validation
+      // Sort items deterministically to prevent deadlocks
+      const sortedItems = [...existing.items].sort((a, b) => {
+        const comp = a.seafoodId.localeCompare(b.seafoodId);
+        return comp !== 0 ? comp : a.gradeId.localeCompare(b.gradeId);
+      });
+
+      for (const item of sortedItems) {
+        const lockedRows = await tx.$queryRaw<Array<{
+          id: string;
+          quantityKg: string | number | Prisma.Decimal;
+          averageCost: string | number | Prisma.Decimal;
+          totalValue: string | number | Prisma.Decimal;
+        }>>`
+          SELECT id, "quantityKg", "averageCost", "totalValue"
+          FROM "Stock"
+          WHERE "seafoodId" = ${item.seafoodId} AND "gradeId" = ${item.gradeId}
+          FOR UPDATE
+        `;
+
+        if (!lockedRows || lockedRows.length === 0) {
+          throw AppError.badRequest(
+            `Cannot cancel purchase bill: no stock record found for ${item.seafood.name}.`,
+            'CANCELLATION_VIOLATION'
+          );
+        }
+
+        const qAvail = new Prisma.Decimal(lockedRows[0].quantityKg);
+        const qPurchase = new Prisma.Decimal(item.quantityKg);
+
+        if (qAvail.lessThan(qPurchase)) {
+          throw AppError.badRequest(
+            `Cannot cancel purchase bill: available stock (${qAvail.toFixed(2)} KG) for ${item.seafood.name} is less than purchased quantity (${qPurchase.toFixed(2)} KG). Part of this catch has already been sold.`,
+            'CANCELLATION_VIOLATION',
+            { availableKg: qAvail.toFixed(2), purchasedKg: qPurchase.toFixed(2), seafood: item.seafood.name }
+          );
+        }
+
+        const stockId = lockedRows[0].id;
+        const balanceBefore = qAvail;
+        const balanceAfter = balanceBefore.sub(qPurchase);
+
+        const vPurchase = qPurchase.mul(new Prisma.Decimal(item.purchaseRate)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        const currentTotalVal = new Prisma.Decimal(lockedRows[0].totalValue || 0);
+        let newTotalValue = currentTotalVal.sub(vPurchase);
+        let newAverageCost = new Prisma.Decimal(lockedRows[0].averageCost || 0);
+
+        if (balanceAfter.greaterThan(0)) {
+          if (newTotalValue.greaterThan(0)) {
+            newAverageCost = newTotalValue.div(balanceAfter).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+          }
+          newTotalValue = balanceAfter.mul(newAverageCost).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        } else {
+          newAverageCost = new Prisma.Decimal('0.00');
+          newTotalValue = new Prisma.Decimal('0.00');
+        }
+
+        await tx.stock.update({
+          where: { id: stockId },
+          data: {
+            quantityKg: balanceAfter,
+            averageCost: newAverageCost,
+            totalValue: newTotalValue
+          }
+        });
+
+        await tx.stockMovement.create({
+          data: {
+            stockId,
+            seafoodId: item.seafoodId,
+            gradeId: item.gradeId,
+            movementType: 'ADJUSTMENT',
+            quantityKg: qPurchase.negated(),
+            balanceBefore,
+            balanceAfter,
+            unitCost: new Prisma.Decimal(item.purchaseRate),
+            totalCost: vPurchase,
+            referenceType: 'PURCHASE_CANCEL',
+            referenceId: id,
+            movementDate: existing.billDate,
+            notes: `Compensating Stock Reversal for Cancelled Purchase Bill ${existing.billNumber}`,
+            createdById: userId || null
+          }
+        });
+      }
+    }, {
+      maxWait: 15000,
+      timeout: 60000
+    });
+
+    const refreshed = await this.repo.findById(id);
+    return PurchaseBillService.formatBill(refreshed!);
   }
 }

@@ -6,6 +6,7 @@ import {
   updateExportCompanySchema
 } from '../validators/exportCompany.validator';
 import { idParamSchema, paginationQuerySchema } from '../validators/common.validators';
+import { requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -13,14 +14,21 @@ router.get('/', validateRequest({ query: paginationQuerySchema }), ExportCompany
 router.get('/:id', validateRequest({ params: idParamSchema }), ExportCompanyController.getById);
 router.post(
   '/',
+  requireRole(['ADMIN']),
   validateRequest({ body: createExportCompanySchema }),
   ExportCompanyController.create
 );
 router.patch(
   '/:id',
+  requireRole(['ADMIN']),
   validateRequest({ params: idParamSchema, body: updateExportCompanySchema }),
   ExportCompanyController.update
 );
-router.delete('/:id', validateRequest({ params: idParamSchema }), ExportCompanyController.delete);
+router.delete(
+  '/:id',
+  requireRole(['ADMIN']),
+  validateRequest({ params: idParamSchema }),
+  ExportCompanyController.delete
+);
 
 export const exportCompanyRoutes = router;

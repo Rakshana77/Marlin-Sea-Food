@@ -1,9 +1,9 @@
 // MobileBottomNav Component - Sticky Bottom Navigation & FAB
 export function renderMobileNav(currentRoute) {
   const tabs = [
-    { id: 'pos', label: 'POS', icon: 'point_of_sale' },
     { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' },
-    { id: 'purchase-bills', label: 'Billing', icon: 'receipt_long' },
+    { id: 'purchase-bills', label: 'Collection', icon: 'receipt_long' },
+    { id: 'pos', label: 'Sales', icon: 'point_of_sale' },
     { id: 'daily-rates', label: 'Rates', icon: 'show_chart' },
     { id: 'more', label: 'More', icon: 'apps' }
   ];
@@ -16,7 +16,7 @@ export function renderMobileNav(currentRoute) {
         class="flex items-center gap-2 px-4 py-3 rounded-full bg-secondary-marine text-white font-title-md shadow-lg hover:opacity-95 active:scale-95 transition-all"
       >
         <span class="material-symbols-outlined text-[20px]">add</span>
-        <span class="text-sm font-semibold tracking-wide">+ Create Bill</span>
+        <span class="text-sm font-semibold tracking-wide">+ Record Collection</span>
       </button>
     </div>
 

@@ -1,4 +1,4 @@
-﻿import { BaseRepository } from './base.repository';
+import { BaseRepository } from './base.repository';
 import { Prisma, Sale } from '@prisma/client';
 
 export type SaleWithRelations = Sale & {
@@ -9,7 +9,17 @@ export type SaleWithRelations = Sale & {
     mobileNumber: string;
     email: string | null;
     address: string | null;
-  };
+  } | null;
+  exportCompany: {
+    id: string;
+    companyName: string;
+    contactPerson: string | null;
+    countryCode: string;
+    mobileNumber: string | null;
+    email: string | null;
+    address: string | null;
+    taxNumber: string | null;
+  } | null;
   items: Array<{
     id: string;
     seafoodId: string;
@@ -17,6 +27,9 @@ export type SaleWithRelations = Sale & {
     quantityKg: Prisma.Decimal;
     sellingRate: Prisma.Decimal;
     amount: Prisma.Decimal;
+    costRate?: Prisma.Decimal;
+    cogsAmount?: Prisma.Decimal;
+    grossProfit?: Prisma.Decimal;
     seafood: {
       id: string;
       name: string;
@@ -47,6 +60,75 @@ export type SaleWithRelations = Sale & {
   } | null;
 };
 
+const saleIncludeRelations = {
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      countryCode: true,
+      mobileNumber: true,
+      email: true,
+      address: true
+    }
+  },
+  exportCompany: {
+    select: {
+      id: true,
+      companyName: true,
+      contactPerson: true,
+      countryCode: true,
+      mobileNumber: true,
+      email: true,
+      address: true,
+      taxNumber: true
+    }
+  },
+  items: {
+    include: {
+      seafood: {
+        select: {
+          id: true,
+          name: true,
+          unit: true,
+          category: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      },
+      grade: {
+        select: {
+          id: true,
+          name: true,
+          description: true
+        }
+      }
+    }
+  },
+  payments: {
+    select: {
+      id: true,
+      amount: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      paymentDate: true,
+      referenceNumber: true,
+      notes: true
+    },
+    orderBy: {
+      paymentDate: 'asc' as const
+    }
+  },
+  createdBy: {
+    select: {
+      id: true,
+      name: true
+    }
+  }
+};
+
 export class SaleRepository extends BaseRepository {
   async findMany(params: {
     skip?: number;
@@ -58,62 +140,7 @@ export class SaleRepository extends BaseRepository {
       skip: params.skip,
       take: params.take,
       where: { deletedAt: null, ...params.where },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            countryCode: true,
-            mobileNumber: true,
-            email: true,
-            address: true
-          }
-        },
-        items: {
-          include: {
-            seafood: {
-              select: {
-                id: true,
-                name: true,
-                unit: true,
-                category: {
-                  select: {
-                    id: true,
-                    name: true
-                  }
-                }
-              }
-            },
-            grade: {
-              select: {
-                id: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        },
-        payments: {
-          select: {
-            id: true,
-            amount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            paymentDate: true,
-            referenceNumber: true,
-            notes: true
-          },
-          orderBy: {
-            paymentDate: 'asc'
-          }
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      },
+      include: saleIncludeRelations,
       orderBy: params.orderBy || { createdAt: 'desc' }
     });
   }
@@ -127,186 +154,21 @@ export class SaleRepository extends BaseRepository {
   async findById(id: string): Promise<SaleWithRelations | null> {
     return this.db.sale.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            countryCode: true,
-            mobileNumber: true,
-            email: true,
-            address: true
-          }
-        },
-        items: {
-          include: {
-            seafood: {
-              select: {
-                id: true,
-                name: true,
-                unit: true,
-                category: {
-                  select: {
-                    id: true,
-                    name: true
-                  }
-                }
-              }
-            },
-            grade: {
-              select: {
-                id: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        },
-        payments: {
-          select: {
-            id: true,
-            amount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            paymentDate: true,
-            referenceNumber: true,
-            notes: true
-          },
-          orderBy: {
-            paymentDate: 'asc'
-          }
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      include: saleIncludeRelations
     });
   }
 
   async findByInvoiceNumber(invoiceNumber: string): Promise<SaleWithRelations | null> {
     return this.db.sale.findFirst({
       where: { invoiceNumber, deletedAt: null },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            countryCode: true,
-            mobileNumber: true,
-            email: true,
-            address: true
-          }
-        },
-        items: {
-          include: {
-            seafood: {
-              select: {
-                id: true,
-                name: true,
-                unit: true,
-                category: {
-                  select: {
-                    id: true,
-                    name: true
-                  }
-                }
-              }
-            },
-            grade: {
-              select: {
-                id: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        },
-        payments: {
-          select: {
-            id: true,
-            amount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            paymentDate: true,
-            referenceNumber: true,
-            notes: true
-          },
-          orderBy: {
-            paymentDate: 'asc'
-          }
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      include: saleIncludeRelations
     });
   }
 
   async findByIdempotencyKey(idempotencyKey: string): Promise<SaleWithRelations | null> {
     return this.db.sale.findFirst({
       where: { idempotencyKey, deletedAt: null },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            countryCode: true,
-            mobileNumber: true,
-            email: true,
-            address: true
-          }
-        },
-        items: {
-          include: {
-            seafood: {
-              select: {
-                id: true,
-                name: true,
-                unit: true,
-                category: {
-                  select: {
-                    id: true,
-                    name: true
-                  }
-                }
-              }
-            },
-            grade: {
-              select: {
-                id: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        },
-        payments: {
-          select: {
-            id: true,
-            amount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            paymentDate: true,
-            referenceNumber: true,
-            notes: true
-          },
-          orderBy: {
-            paymentDate: 'asc'
-          }
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      include: saleIncludeRelations
     });
   }
 }

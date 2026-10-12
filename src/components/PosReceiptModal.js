@@ -1,8 +1,11 @@
-﻿// PosReceiptModal Component - 80mm ESC/POS Thermal Receipt for POS Sales
+// PosReceiptModal Component - 80mm ESC/POS Thermal Receipt for POS Sales
+import { store } from '../state/store.js';
 import { showToast } from './Toast.js';
+import { printThermalReceipt } from '../utils/receiptPrinter.js';
 
 export function openPosReceiptModal(sale, onNewSale) {
   const container = document.getElementById('modal-root') || document.body;
+  const companyName = store.getCompanyName ? store.getCompanyName() : 'Marine Seafoods';
 
   // Remove existing receipt modal if present
   const existing = document.getElementById('pos-receipt-modal');
@@ -13,10 +16,10 @@ export function openPosReceiptModal(sale, onNewSale) {
   modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary-container/80 backdrop-blur-sm animate-fade-in select-none';
 
   const waText = encodeURIComponent(
-    `*MARLIN SEA FOOD - RETAIL RECEIPT*\n` +
+    `*${companyName.toUpperCase()} - WHOLESALE TRADE RECEIPT*\n` +
     `Invoice: ${sale.invoiceNumber}\n` +
     `Date: ${sale.saleDate}\n` +
-    `Customer: ${sale.customer?.name || 'Walk-in Customer'}\n` +
+    `Buyer: ${sale.customer?.name || 'Direct Buyer'}\n` +
     `--------------------------------\n` +
     sale.items.map(it => `${it.seafood?.name || 'Item'} (${it.grade?.name || 'A'}): ${it.quantityKg} KG @ ₹${it.sellingRate} = ₹${it.amount}`).join('\n') +
     `\n--------------------------------\n` +
@@ -26,7 +29,7 @@ export function openPosReceiptModal(sale, onNewSale) {
     `*NET PAYABLE: ₹${sale.grandTotal}*\n` +
     `Payment: ${sale.payments?.[0]?.paymentMethod || 'CASH'} (${sale.paymentStatus})\n` +
     (parseFloat(sale.changeAmount) > 0 ? `Change Returned: ₹${sale.changeAmount}\n` : '') +
-    `Thank you for shopping at Marlin Sea Food!`
+    `Thank you for your business.`
   );
 
   const customerMobile = sale.customer?.mobileNumber && sale.customer.mobileNumber !== '0000000000'
@@ -40,23 +43,23 @@ export function openPosReceiptModal(sale, onNewSale) {
   modalOverlay.innerHTML = `
     <div class="bg-surface-container-lowest w-full max-w-md rounded-2xl border border-outline-variant shadow-2xl p-space-md animate-slide-up flex flex-col gap-space-sm max-h-[92vh] overflow-y-auto">
       <!-- Modal Header -->
-      <div class="flex items-center justify-between border-b border-outline-variant/60 pb-2">
+      <div class="flex items-center justify-between border-b border-outline-variant/60 pb-2 no-print">
         <div class="flex items-center gap-2">
           <span class="p-1.5 rounded-lg bg-secondary/15 text-secondary flex items-center justify-center">
             <span class="material-symbols-outlined text-[22px]">check_circle</span>
           </span>
           <div>
-            <h2 class="font-title-lg text-title-lg text-primary font-bold">Sale Completed</h2>
+            <h2 class="font-title-lg text-title-lg text-primary font-bold">Wholesale Sale Completed</h2>
             <p class="text-xs text-on-surface-variant font-mono font-medium">${sale.invoiceNumber} &bull; ${sale.saleDate}</p>
           </div>
         </div>
-        <button id="close-pos-receipt-btn" class="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container-low transition-colors">
+        <button id="close-pos-receipt-btn" class="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container-low transition-colors no-print">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
       </div>
 
       <!-- Action Buttons -->
-      <div class="grid grid-cols-3 gap-2">
+      <div class="grid grid-cols-3 gap-2 no-print">
         <button id="print-pos-slip-btn" class="flex flex-col items-center justify-center p-2 rounded-xl bg-primary text-white hover:bg-primary-container transition-all active:scale-95 shadow-sm">
           <span class="material-symbols-outlined text-[20px] text-secondary-fixed">print</span>
           <span class="text-xs font-semibold mt-0.5">Print Slip</span>
@@ -68,19 +71,19 @@ export function openPosReceiptModal(sale, onNewSale) {
         </a>
 
         <button id="new-pos-sale-btn" class="flex flex-col items-center justify-center p-2 rounded-xl bg-secondary text-white hover:opacity-90 transition-all active:scale-95 shadow-sm">
-          <span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+          <span class="material-symbols-outlined text-[20px]">receipt_long</span>
           <span class="text-xs font-semibold mt-0.5">New Sale</span>
         </button>
       </div>
 
       <!-- 80mm ESC/POS Thermal Paper Simulation -->
-      <div class="bg-white border-2 border-dashed border-outline-variant/80 rounded-xl p-4 font-mono text-xs text-black shadow-inner flex flex-col items-center">
-        <div id="pos-thermal-print-area" class="w-full max-w-[76mm] text-center">
+      <div class="receipt-paper-wrapper bg-white border-2 border-dashed border-outline-variant/80 rounded-xl p-4 font-mono text-xs text-black shadow-inner flex flex-col items-center">
+        <div id="thermal-receipt-print-area" class="thermal-receipt-printable w-full max-w-[76mm] text-center">
           <div class="border-b border-black pb-2 mb-2">
-            <h3 class="font-bold text-sm tracking-tight">MARLIN SEA FOOD</h3>
-            <p class="text-[10px]">Harbor Terminal Retail Counter A</p>
+            <h3 class="font-bold text-sm tracking-tight">${companyName.toUpperCase()}</h3>
+            <p class="text-[10px]">Harbor Wholesale Trade & Dispatch Terminal</p>
             <p class="text-[10px]">North Slipway, Chennai Port</p>
-            <p class="text-[10px]">Ph: +91 98401 22345 | Retail POS #01</p>
+            <p class="text-[10px]">Ph: +91 98401 22345 | Wholesale Terminal #01</p>
           </div>
 
           <div class="text-left text-[11px] mb-2 border-b border-black/40 pb-2 flex flex-col gap-0.5">
@@ -89,8 +92,8 @@ export function openPosReceiptModal(sale, onNewSale) {
               <span><b>DATE:</b> ${sale.saleDate}</span>
             </div>
             <div class="flex justify-between">
-              <span><b>CUSTOMER:</b> ${sale.customer?.name || 'Walk-in Customer'}</span>
-              <span><b>TIER:</b> Retail</span>
+              <span><b>BUYER:</b> ${sale.customer?.name || 'Direct Buyer'}</span>
+              <span><b>TYPE:</b> Wholesale</span>
             </div>
             ${customerMobile ? `<div><span><b>MOBILE:</b> +91 ${customerMobile}</span></div>` : ''}
           </div>
@@ -159,8 +162,8 @@ export function openPosReceiptModal(sale, onNewSale) {
           </div>
 
           <div class="border-t border-black mt-3 pt-2 text-[9px] text-center text-gray-600">
-            <p>Thank you for choosing Marlin Sea Food!</p>
-            <p>Fresh Harbour Catch Guaranteed &bull; GST Exempted</p>
+            <p>Thank you for your business.</p>
+            <p>Quality Marine Seafoods &bull; Wholesale Trade & Dispatch</p>
           </div>
         </div>
       </div>
@@ -177,7 +180,7 @@ export function openPosReceiptModal(sale, onNewSale) {
   closeBtn?.addEventListener('click', () => modalOverlay.remove());
 
   printBtn?.addEventListener('click', () => {
-    window.print();
+    printThermalReceipt('thermal-receipt-print-area');
     showToast('Thermal slip sent to printer');
   });
 

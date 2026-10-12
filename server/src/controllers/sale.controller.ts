@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { SaleService } from '../services/sale.service';
 import { sendSuccess } from '../utils/response';
 import { SaleStatus, PaymentStatus } from '@prisma/client';
@@ -19,9 +19,16 @@ export class SaleController {
     const paymentStatus = req.query.paymentStatus as PaymentStatus | undefined;
     const search = req.query.search as string | undefined;
 
+    const type = (req.query.type || req.query.saleType) as any;
+    const exportCompanyId = req.query.exportCompanyId as string | undefined;
+    const invoiceNumber = (req.query.invoiceNumber || req.query.billNumber) as string | undefined;
+
     const result = await service.getSalesList({
       page,
       limit,
+      type,
+      exportCompanyId,
+      invoiceNumber,
       date,
       fromDate,
       toDate,

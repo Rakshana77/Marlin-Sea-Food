@@ -33,6 +33,14 @@ export function renderFishermenView() {
 
         <div class="flex items-center gap-2">
           <button 
+            id="open-disburse-advance-btn"
+            class="px-3.5 py-2 rounded-lg bg-warning hover:bg-amber-600 text-white font-bold text-xs shadow-xs active:scale-95 transition-all flex items-center gap-1.5"
+          >
+            <span class="material-symbols-outlined text-[18px]">payments</span>
+            <span>+ Issue Advance</span>
+          </button>
+
+          <button 
             id="open-import-excel-btn"
             class="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-primary font-semibold text-xs border border-outline-variant flex items-center gap-1.5 transition-colors shadow-xs"
           >
@@ -182,6 +190,10 @@ function renderFishermanProfile(fisherman) {
 
         <!-- Quick Dossier Triggers -->
         <div class="flex items-center gap-2">
+          <button id="profile-advance-btn" data-id="${fisherman.id}" class="px-3.5 py-2 rounded-lg bg-warning hover:bg-amber-600 text-white text-xs font-bold shadow-xs active:scale-95 transition-all flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[16px]">payments</span>
+            <span>+ Issue Advance</span>
+          </button>
           <a href="tel:${fisherman.countryCode}${fisherman.mobile}" class="px-3 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-primary text-xs font-semibold border border-outline-variant flex items-center gap-1.5 transition-colors">
             <span class="material-symbols-outlined text-[16px]">call</span>
             <span>Call</span>
@@ -192,7 +204,7 @@ function renderFishermanProfile(fisherman) {
           </button>
           <button id="profile-new-bill-btn" class="px-4 py-2 rounded-lg bg-secondary-marine text-white font-semibold text-xs shadow-sm hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5">
             <span class="material-symbols-outlined text-[16px]">add</span>
-            <span>Create Purchase Bill</span>
+            <span>Record Catch Bill</span>
           </button>
         </div>
       </div>
@@ -200,21 +212,21 @@ function renderFishermanProfile(fisherman) {
       <!-- Financial Snapshot Bento -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm">
-          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Outstanding Advance</span>
+          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Active Advance Balance</span>
           <span class="font-headline-md text-headline-md text-warning font-bold tabular-nums">₹${fisherman.outstanding.toLocaleString('en-IN')}</span>
-          <span class="text-[11px] text-outline block mt-1">Deducted per boat catch</span>
+          <span class="text-[11px] text-outline block mt-1">Adjusted against daily catch bills</span>
         </div>
 
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm">
-          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Total Purchases Value</span>
+          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Total Catch Procured</span>
           <span class="font-headline-md text-headline-md text-primary font-bold tabular-nums">₹${fisherman.totalPurchaseAmount.toLocaleString('en-IN')}</span>
-          <span class="text-[11px] text-profit font-medium block mt-1">${fisherman.totalBills} Verified Bills</span>
+          <span class="text-[11px] text-profit font-medium block mt-1">${fisherman.totalBills} Verified Landings</span>
         </div>
 
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm">
-          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Total Catch Landed</span>
+          <span class="text-xs font-semibold text-outline uppercase tracking-wider block mb-1">Total Landed Weight</span>
           <span class="font-headline-md text-headline-md text-primary font-bold tabular-nums">${fisherman.totalPurchaseKg} KG</span>
-          <span class="text-[11px] text-outline block mt-1">Fiber Vallam Fleet</span>
+          <span class="text-[11px] text-outline block mt-1">${fisherman.boatName}</span>
         </div>
 
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm">
@@ -224,40 +236,52 @@ function renderFishermanProfile(fisherman) {
         </div>
       </div>
 
-      <!-- Catch History Ledger Table -->
+      <!-- Unified Financial & Catch Ledger Table -->
       <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm overflow-hidden">
         <div class="p-space-md border-b border-outline-variant/60 bg-white flex items-center justify-between">
-          <h3 class="font-title-md text-title-md text-primary font-bold">Landing History & Advance Adjustments</h3>
-          <span class="text-xs text-outline font-mono">${bills.length} Records</span>
+          <div>
+            <h3 class="font-title-md text-title-md text-primary font-bold">Fisherman Financial & Catch Ledger</h3>
+            <p class="text-[11px] text-outline">Traceable record of Collections, Advances Given, Advance Adjustments, and Net Cash Payouts.</p>
+          </div>
+          <span class="text-xs text-outline font-mono">${store.getFishermanLedger(fisherman.id).length} Ledger Transactions</span>
         </div>
 
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs border-collapse">
             <thead>
               <tr class="bg-surface-container-low border-b border-outline-variant/60 text-outline font-label-caps uppercase tracking-wider">
-                <th class="py-2.5 px-4">Bill ID</th>
+                <th class="py-2.5 px-4">Transaction Ref</th>
                 <th class="py-2.5 px-3">Date & Time</th>
-                <th class="py-2.5 px-3">Catch Breakdown</th>
-                <th class="py-2.5 px-3 text-right">Net Weight</th>
-                <th class="py-2.5 px-3 text-right">Gross Amount</th>
-                <th class="py-2.5 px-3 text-right">Advance Deducted</th>
-                <th class="py-2.5 px-4 text-right">Net Cash Paid</th>
+                <th class="py-2.5 px-3">Type</th>
+                <th class="py-2.5 px-4">Transaction Details</th>
+                <th class="py-2.5 px-4 text-right">Amount (₹)</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-outline-variant/40">
-              ${bills.map(b => `
+              ${store.getFishermanLedger(fisherman.id).map(l => `
                 <tr class="hover:bg-surface-container-low/30 transition-colors">
-                  <td class="py-2.5 px-4 font-mono font-bold text-primary">${b.id}</td>
-                  <td class="py-2.5 px-3 text-outline">${b.date}, ${b.time}</td>
-                  <td class="py-2.5 px-3 text-on-surface">${b.items.map(i => `${i.speciesName} (${i.netKg} KG)`).join(', ')}</td>
-                  <td class="py-2.5 px-3 text-right font-mono font-bold">${b.totalKg.toFixed(1)} KG</td>
-                  <td class="py-2.5 px-3 text-right font-mono">₹${b.subtotal.toLocaleString('en-IN')}</td>
-                  <td class="py-2.5 px-3 text-right font-mono text-warning">-₹${b.advanceDeduction.toLocaleString('en-IN')}</td>
-                  <td class="py-2.5 px-4 text-right font-mono font-bold text-profit">₹${b.grandTotal.toLocaleString('en-IN')}</td>
+                  <td class="py-2.5 px-4 font-mono font-bold text-primary">${l.id}</td>
+                  <td class="py-2.5 px-3 text-outline font-mono">${l.date}</td>
+                  <td class="py-2.5 px-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                      l.type === 'Advance Given' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                      l.type === 'Catch Collection' ? 'bg-procure-bg text-procure' :
+                      l.type === 'Advance Adjustment' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
+                      'bg-emerald-100 text-emerald-900'
+                    }">
+                      ${l.type}
+                    </span>
+                  </td>
+                  <td class="py-2.5 px-4 text-on-surface">${l.notes}</td>
+                  <td class="py-2.5 px-4 text-right font-mono font-bold tabular-nums ${
+                    l.isCredit ? 'text-profit' : 'text-primary'
+                  }">
+                    ${l.isCredit ? '+' : '-'}₹${l.amount.toLocaleString('en-IN')}
+                  </td>
                 </tr>
               `).join('')}
-              ${bills.length === 0 ? `
-                <tr><td colspan="7" class="p-6 text-center text-outline">No transactions recorded for this fisherman yet.</td></tr>
+              ${store.getFishermanLedger(fisherman.id).length === 0 ? `
+                <tr><td colspan="5" class="p-6 text-center text-outline">No ledger transactions recorded for this fisherman yet.</td></tr>
               ` : ''}
             </tbody>
           </table>
@@ -277,6 +301,19 @@ export function bindFishermenEvents() {
   const addBtn = container.querySelector('#open-add-fisherman-btn');
   if (addBtn) {
     addBtn.addEventListener('click', () => openAddFishermanModal(() => store.notify()));
+  }
+
+  // Disburse Advance Modal
+  const disburseBtn = container.querySelector('#open-disburse-advance-btn');
+  if (disburseBtn) {
+    disburseBtn.addEventListener('click', () => openDisburseAdvanceModal());
+  }
+
+  const profileAdvanceBtn = container.querySelector('#profile-advance-btn');
+  if (profileAdvanceBtn) {
+    profileAdvanceBtn.addEventListener('click', () => {
+      openDisburseAdvanceModal(profileAdvanceBtn.dataset.id);
+    });
   }
 
   // Import Excel
@@ -366,3 +403,145 @@ export function bindFishermenEvents() {
     });
   });
 }
+
+export function openDisburseAdvanceModal(presetFishermanId = null) {
+  const state = store.getState();
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+
+  const initialFisherman = presetFishermanId 
+    ? state.fishermen.find(f => f.id === presetFishermanId) || state.fishermen[0]
+    : state.fishermen[0];
+
+  const modalHtml = `
+    <div id="advance-modal-overlay" class="fixed inset-0 z-50 bg-primary/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in select-none">
+      <div class="bg-surface-container-lowest w-full max-w-md rounded-2xl border border-outline-variant/60 shadow-2xl p-6 flex flex-col gap-4">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-outline-variant/60">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-warning text-[24px]">payments</span>
+            <h3 class="font-title-lg text-primary font-bold">Issue Fisherman Advance</h3>
+          </div>
+          <button id="close-advance-modal-btn" class="p-1 text-outline hover:text-primary">
+            <span class="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        <form id="advance-form" class="flex flex-col gap-3.5 text-xs">
+          <div>
+            <label class="block font-semibold text-primary mb-1">Select Fisherman / Fleet Owner</label>
+            <select id="adv-fisherman-select" required class="w-full h-10 px-3 bg-surface border border-outline-variant rounded-lg text-primary font-medium focus:ring-2 focus:ring-secondary-marine">
+              ${state.fishermen.map(f => `
+                <option value="${f.id}" ${f.id === initialFisherman.id ? 'selected' : ''}>
+                  ${f.name} — ${f.boatName} (Current Adv: ₹${f.outstanding.toLocaleString('en-IN')})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+            <div>
+              <span class="text-[10px] text-outline uppercase tracking-wider block font-bold">Current Advance</span>
+              <span id="adv-current-display" class="font-mono text-sm font-bold text-warning tabular-nums">₹${initialFisherman.outstanding.toLocaleString('en-IN')}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-outline uppercase tracking-wider block font-bold">Projected Total</span>
+              <span id="adv-projected-display" class="font-mono text-sm font-bold text-primary tabular-nums">₹${initialFisherman.outstanding.toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-primary mb-1">New Advance Amount (₹)</label>
+            <input type="number" id="adv-amount" min="100" step="100" required placeholder="e.g. 10000" class="w-full h-10 px-3 bg-surface border border-outline-variant rounded-lg font-mono font-bold text-base text-primary focus:ring-2 focus:ring-secondary-marine" />
+          </div>
+
+          <div>
+            <label class="block font-semibold text-primary mb-1">Disbursement Method</label>
+            <select id="adv-method" class="w-full h-10 px-3 bg-surface border border-outline-variant rounded-lg text-primary font-medium">
+              <option value="Cash">Cash (Immediate Dock Cashier)</option>
+              <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
+              <option value="UPI">UPI / Digital Transfer</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-primary mb-1">Purpose / Notes</label>
+            <input type="text" id="adv-notes" placeholder="e.g. Diesel fuel bunkering, provisioning & net maintenance" class="w-full h-10 px-3 bg-surface border border-outline-variant rounded-lg text-primary focus:ring-2 focus:ring-secondary-marine" />
+          </div>
+
+          <div class="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-amber-900 flex items-start gap-2">
+            <span class="material-symbols-outlined text-[18px] text-warning shrink-0">info</span>
+            <span class="text-[11px]">
+              This creates an audited financial disbursement ledger entry and adds to the boat's active advance balance. It is recovered during catch settlements.
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 pt-2">
+            <button type="button" id="cancel-adv-modal-btn" class="flex-1 py-2.5 rounded-lg border border-outline-variant bg-surface hover:bg-surface-container font-semibold text-outline text-xs">
+              Cancel
+            </button>
+            <button type="submit" id="save-adv-btn" class="flex-1 py-2.5 rounded-lg bg-warning hover:bg-amber-600 text-white font-bold text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">save</span>
+              <span id="save-adv-text">Confirm Advance</span>
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  modalRoot.innerHTML = modalHtml;
+
+  const closeBtn = document.getElementById('close-advance-modal-btn');
+  const cancelBtn = document.getElementById('cancel-adv-modal-btn');
+  const form = document.getElementById('advance-form');
+  const submitBtn = document.getElementById('save-adv-btn');
+  const submitText = document.getElementById('save-adv-text');
+  const selectElem = document.getElementById('adv-fisherman-select');
+  const amountInput = document.getElementById('adv-amount');
+  const currentDisplay = document.getElementById('adv-current-display');
+  const projectedDisplay = document.getElementById('adv-projected-display');
+
+  const updateProjected = () => {
+    const fId = selectElem.value;
+    const f = state.fishermen.find(item => item.id === fId);
+    const curr = f ? f.outstanding : 0;
+    const added = parseFloat(amountInput.value) || 0;
+    currentDisplay.textContent = `₹${curr.toLocaleString('en-IN')}`;
+    projectedDisplay.textContent = `₹${(curr + added).toLocaleString('en-IN')}`;
+  };
+
+  selectElem.addEventListener('change', updateProjected);
+  amountInput.addEventListener('input', updateProjected);
+
+  const close = () => { if (modalRoot) modalRoot.innerHTML = ''; };
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (cancelBtn) cancelBtn.addEventListener('click', close);
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fishermanId = selectElem.value;
+      const amount = parseFloat(amountInput.value);
+      const paymentMethod = document.getElementById('adv-method').value;
+      const notes = document.getElementById('adv-notes').value.trim();
+
+      if (!amount || amount <= 0) {
+        alert("Please enter a valid advance amount.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+      submitText.textContent = 'Recording Advance...';
+
+      const entry = store.recordFishermanAdvance({ fishermanId, amount, paymentMethod, notes });
+      if (entry) {
+        showToast(`Advance of ₹${amount.toLocaleString('en-IN')} disbursed. Ref: ${entry.id}`, 'success');
+      }
+      close();
+    });
+  }
+}
+

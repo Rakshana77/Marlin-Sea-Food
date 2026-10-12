@@ -9,6 +9,9 @@ import { showToast } from '../components/Toast.js';
 export function renderDashboardView() {
   const state = store.getState();
   const summary = store.getFinancialSummary();
+  const flow = store.getDailySeafoodFlow();
+  const flowSum = flow.summary;
+  const buyerOutstanding = state.customers.reduce((acc, c) => acc + (c.outstanding || 0), 0);
 
   return `
     <div class="flex flex-col gap-space-lg w-full max-w-[1720px] mx-auto pb-24 animate-fade-in">
@@ -31,7 +34,7 @@ export function renderDashboardView() {
               </span>
             </div>
             <div class="flex items-baseline gap-2">
-              <h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">Good Morning, Admin</h1>
+              <h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">Marine Seafoods Operations</h1>
               <span class="font-label-caps px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-mono">${state.terminal}</span>
             </div>
           </div>
@@ -42,8 +45,8 @@ export function renderDashboardView() {
               data-nav="purchase-bills"
               class="inline-flex items-center gap-1.5 px-4 py-2 bg-secondary-marine text-white rounded-lg font-title-md text-sm shadow-sm hover:opacity-95 active:scale-95 transition-all"
             >
-              <span class="material-symbols-outlined text-[18px]">add_shopping_cart</span>
-              <span>+ Purchase Bill</span>
+              <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+              <span>+ Record Collection</span>
             </button>
 
             <button 
@@ -75,18 +78,137 @@ export function renderDashboardView() {
               class="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-container-high hover:bg-surface-container-highest text-primary font-semibold text-sm rounded-lg border border-outline-variant transition-colors"
             >
               <span class="material-symbols-outlined text-[18px] text-primary">lock_clock</span>
-              <span>Day End</span>
+              <span>Day Out</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Primary Financial 7-KPI Bento Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-space-sm lg:gap-space-md">
-        <!-- 1. Today's Sales -->
+      <!-- TODAY'S SEAFOOD FLOW (Section 5 Requirement) -->
+      <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col gap-3">
+        <div class="flex items-center justify-between border-b border-outline-variant/60 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-secondary text-xl">cyclone</span>
+            <h3 class="font-title-md font-bold text-primary">Today's Seafood Daily Cycle Flow</h3>
+          </div>
+          <button data-nav="stock" class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+            <span>Manage Daily Stock Ledger</span>
+            <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div class="bg-surface-container-low/70 p-3 rounded-lg border border-outline-variant/40 flex flex-col justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-outline">Opening Daily Stock</span>
+            <div class="mt-2">
+              <span class="text-2xl font-black font-mono text-primary">0.0</span>
+              <span class="text-xs text-outline font-semibold">KG</span>
+            </div>
+            <span class="text-[10px] text-outline mt-1">Starts at 0 KG</span>
+          </div>
+
+          <div class="bg-emerald-500/5 p-3 rounded-lg border border-emerald-500/20 flex flex-col justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Received Today</span>
+            <div class="mt-2">
+              <span class="text-2xl font-black font-mono text-emerald-600">+${flowSum.receivedKg.toFixed(1)}</span>
+              <span class="text-xs text-emerald-700 font-semibold">KG</span>
+            </div>
+            <span class="text-[10px] text-emerald-700 mt-1">Landed catch</span>
+          </div>
+
+          <div class="bg-blue-500/5 p-3 rounded-lg border border-blue-500/20 flex flex-col justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-blue-700">Sold Today</span>
+            <div class="mt-2">
+              <span class="text-2xl font-black font-mono text-blue-600">-${flowSum.soldKg.toFixed(1)}</span>
+              <span class="text-xs text-blue-700 font-semibold">KG</span>
+            </div>
+            <span class="text-[10px] text-blue-700 mt-1">Export & wholesale</span>
+          </div>
+
+          <div class="bg-rose-500/5 p-3 rounded-lg border border-rose-500/20 flex flex-col justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-rose-700">Wastage Today</span>
+            <div class="mt-2">
+              <span class="text-2xl font-black font-mono text-rose-600">-${flowSum.wastageKg.toFixed(1)}</span>
+              <span class="text-xs text-rose-700 font-semibold">KG</span>
+            </div>
+            <span class="text-[10px] text-rose-700 mt-1">Recorded spoilage</span>
+          </div>
+
+          <div class="col-span-2 md:col-span-1 p-3 rounded-lg border-2 ${
+            flowSum.closingKg === 0 
+              ? 'bg-emerald-500/10 border-emerald-500/50' 
+              : 'bg-primary/5 border-primary/30'
+          } flex flex-col justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider ${flowSum.closingKg === 0 ? 'text-emerald-800' : 'text-primary'}">
+              Available / Closing Today
+            </span>
+            <div class="mt-2">
+              <span class="text-2xl font-black font-mono ${flowSum.closingKg === 0 ? 'text-emerald-700' : 'text-primary'}">
+                ${flowSum.closingKg.toFixed(1)}
+              </span>
+              <span class="text-xs font-semibold ${flowSum.closingKg === 0 ? 'text-emerald-800' : 'text-primary'}">KG</span>
+            </div>
+            <span class="text-[10px] ${flowSum.closingKg === 0 ? 'text-emerald-700' : 'text-outline'} mt-1">
+              ${flowSum.closingKg === 0 ? '✓ Day Fully Reconciled' : 'In Cold Storage'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Primary Seafood Operations 8-KPI Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-sm lg:gap-space-md">
+        <!-- 1. Today's Collection -->
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
           <div class="flex items-center justify-between text-outline mb-1">
-            <span class="font-label-caps uppercase tracking-wider">Today's Sales</span>
+            <span class="font-label-caps uppercase tracking-wider">Today's Collection</span>
+            <span class="material-symbols-outlined text-secondary text-[18px]">scale</span>
+          </div>
+          <div>
+            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
+              ${summary.totalPurchasedKg.toFixed(1)} <span class="text-sm font-normal text-outline">KG</span>
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium mt-1">
+              <span>${state.purchaseBills.length} Inward Lots Landed</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Today's Procurement -->
+        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between text-outline mb-1">
+            <span class="font-label-caps uppercase tracking-wider">Today's Procurement</span>
+            <span class="material-symbols-outlined text-procure text-[18px]">receipt_long</span>
+          </div>
+          <div>
+            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
+              ₹${summary.todayPurchases.toLocaleString('en-IN')}
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium mt-1">
+              <span>Procurement Outlay</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Available Seafood (Section 5 Requirement) -->
+        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between text-outline mb-1">
+            <span class="font-label-caps uppercase tracking-wider">Available Today</span>
+            <span class="material-symbols-outlined text-secondary text-[18px]">inventory_2</span>
+          </div>
+          <div>
+            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
+              ${flowSum.closingKg.toFixed(1)} <span class="text-sm font-normal text-outline">KG</span>
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium mt-1">
+              <span>Rcvd: ${flowSum.receivedKg.toFixed(0)} | Sold: ${flowSum.soldKg.toFixed(0)} | Waste: ${flowSum.wastageKg.toFixed(0)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Wholesale Sales -->
+        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between text-outline mb-1">
+            <span class="font-label-caps uppercase tracking-wider">Wholesale Sales</span>
             <span class="material-symbols-outlined text-secondary text-[18px]">payments</span>
           </div>
           <div>
@@ -95,79 +217,15 @@ export function renderDashboardView() {
             </div>
             <div class="flex items-center gap-1 text-[11px] text-profit font-medium mt-1">
               <span class="material-symbols-outlined text-[14px]">trending_up</span>
-              <span>+14.2% vs yesterday</span>
+              <span>Wholesale & Export</span>
             </div>
           </div>
         </div>
 
-        <!-- 2. Today's Purchase -->
+        <!-- 5. Dispatched Quantity -->
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
           <div class="flex items-center justify-between text-outline mb-1">
-            <span class="font-label-caps uppercase tracking-wider">Today's Purchase</span>
-            <span class="material-symbols-outlined text-procure text-[18px]">receipt_long</span>
-          </div>
-          <div>
-            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
-              ₹${summary.todayPurchases.toLocaleString('en-IN')}
-            </div>
-            <div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium mt-1">
-              <span>${state.purchaseBills.length} Inward Lots</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. Today's Expenses -->
-        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between text-outline mb-1">
-            <span class="font-label-caps uppercase tracking-wider">Today's Expenses</span>
-            <span class="material-symbols-outlined text-error text-[18px]">account_balance_wallet</span>
-          </div>
-          <div>
-            <div class="font-headline-md text-headline-md text-error font-bold tabular-nums">
-              ₹${summary.todayExpenses.toLocaleString('en-IN')}
-            </div>
-            <div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium mt-1">
-              <span>Ice, Fuel & Labour</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 4. Today's Profit -->
-        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-profit/30 bg-profit-bg/20 shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between text-profit mb-1">
-            <span class="font-label-caps uppercase tracking-wider font-bold">Today's Profit</span>
-            <span class="material-symbols-outlined text-[18px]">query_stats</span>
-          </div>
-          <div>
-            <div class="font-headline-md text-headline-md text-profit font-bold tabular-nums">
-              ₹${summary.netProfit.toLocaleString('en-IN')}
-            </div>
-            <div class="flex items-center gap-1 text-[11px] text-profit font-medium mt-1">
-              <span>14.6% Net Margin</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 5. Total Purchased KG -->
-        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between text-outline mb-1">
-            <span class="font-label-caps uppercase tracking-wider">Total Bought</span>
-            <span class="material-symbols-outlined text-secondary text-[18px]">scale</span>
-          </div>
-          <div>
-            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
-              ${summary.totalPurchasedKg.toFixed(1)} <span class="text-sm font-normal text-outline">KG</span>
-            </div>
-            <div class="text-[11px] text-on-surface-variant mt-1">
-              7 Active Landings
-            </div>
-          </div>
-        </div>
-
-        <!-- 6. Total Exported KG -->
-        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between text-outline mb-1">
-            <span class="font-label-caps uppercase tracking-wider">Total Exported</span>
+            <span class="font-label-caps uppercase tracking-wider">Dispatched Quantity</span>
             <span class="material-symbols-outlined text-tertiary text-[18px]">local_shipping</span>
           </div>
           <div>
@@ -175,23 +233,55 @@ export function renderDashboardView() {
               ${summary.totalExportedKg.toFixed(1)} <span class="text-sm font-normal text-outline">KG</span>
             </div>
             <div class="text-[11px] text-secondary font-medium mt-1">
-              Apex & Falcon Reefer
+              Reefer & Truck Dispatches
             </div>
           </div>
         </div>
 
-        <!-- 7. Outstanding Advance -->
+        <!-- 6. Supplier Payable -->
         <div class="bg-surface-container-lowest p-space-md rounded-xl border border-warning/30 shadow-sm flex flex-col justify-between">
           <div class="flex items-center justify-between text-warning mb-1">
-            <span class="font-label-caps uppercase tracking-wider font-bold">Outstanding</span>
-            <span class="material-symbols-outlined text-[18px]">pending_actions</span>
+            <span class="font-label-caps uppercase tracking-wider font-bold">Supplier Payable</span>
+            <span class="material-symbols-outlined text-[18px]">sailing</span>
           </div>
           <div>
             <div class="font-headline-md text-headline-md text-warning font-bold tabular-nums">
               ₹${summary.totalOutstanding.toLocaleString('en-IN')}
             </div>
             <div class="text-[11px] text-on-surface-variant mt-1">
-              Fishermen Advances
+              Fishermen Settlements Due
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. Buyer Outstanding -->
+        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between text-outline mb-1">
+            <span class="font-label-caps uppercase tracking-wider font-bold">Buyer Outstanding</span>
+            <span class="material-symbols-outlined text-secondary text-[18px]">account_balance</span>
+          </div>
+          <div>
+            <div class="font-headline-md text-headline-md text-primary font-bold tabular-nums">
+              ₹${buyerOutstanding.toLocaleString('en-IN')}
+            </div>
+            <div class="text-[11px] text-on-surface-variant mt-1">
+              Wholesale Receivables
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. Operational Margin -->
+        <div class="bg-surface-container-lowest p-space-md rounded-xl border border-profit/30 bg-profit-bg/20 shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between text-profit mb-1">
+            <span class="font-label-caps uppercase tracking-wider font-bold">Operational Margin</span>
+            <span class="material-symbols-outlined text-[18px]">query_stats</span>
+          </div>
+          <div>
+            <div class="font-headline-md text-headline-md text-profit font-bold tabular-nums">
+              ₹${summary.netProfit.toLocaleString('en-IN')}
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-profit font-medium mt-1">
+              <span>Realized Operating Spread</span>
             </div>
           </div>
         </div>
@@ -200,20 +290,20 @@ export function renderDashboardView() {
       <!-- 2-Column Split: Catch Intake Ledger (Left) vs Rates & Cold Store (Right) -->
       <div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md lg:gap-space-lg">
         
-        <!-- LEFT 8 COLUMNS: Recent Inward Purchases Table -->
+        <!-- LEFT 8 COLUMNS: Recent Inward Collections Table -->
         <div class="xl:col-span-8 flex flex-col gap-space-md">
           <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm overflow-hidden">
             <div class="p-space-md flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/60 bg-white">
               <div class="flex items-center gap-2">
                 <span class="material-symbols-outlined text-secondary text-[20px]">sailing</span>
-                <h3 class="font-title-md text-title-md text-primary font-bold">Today's Catch Intake Ledger</h3>
+                <h3 class="font-title-md text-title-md text-primary font-bold">Today's Collection Ledger</h3>
                 <span class="px-2 py-0.5 rounded bg-surface-container text-xs font-mono text-outline font-semibold">Live Weighbridge</span>
               </div>
               <button 
                 data-nav="purchase-bills" 
                 class="text-xs text-secondary-marine font-semibold hover:underline flex items-center gap-1"
               >
-                <span>View All Bills</span>
+                <span>View All Collection Records</span>
                 <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
               </button>
             </div>
@@ -223,9 +313,9 @@ export function renderDashboardView() {
               <table class="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr class="bg-surface-container-low border-b border-outline-variant/60 text-outline font-label-caps uppercase tracking-wider">
-                    <th class="py-2.5 px-space-md">Bill No</th>
-                    <th class="py-2.5 px-space-md">Boat & Fisherman</th>
-                    <th class="py-2.5 px-space-md">Catch Lot</th>
+                    <th class="py-2.5 px-space-md">Record No</th>
+                    <th class="py-2.5 px-space-md">Fisherman / Supplier</th>
+                    <th class="py-2.5 px-space-md">Seafood Species</th>
                     <th class="py-2.5 px-space-md text-right">Net KG</th>
                     <th class="py-2.5 px-space-md text-right">Total (₹)</th>
                     <th class="py-2.5 px-space-md">Status</th>
@@ -349,10 +439,10 @@ export function renderDashboardView() {
             <div class="flex items-center justify-between border-b border-outline-variant/60 pb-2">
               <div class="flex items-center gap-1.5">
                 <span class="material-symbols-outlined text-secondary text-[20px]">show_chart</span>
-                <h3 class="font-title-md text-title-md text-primary font-bold">Harbor Spot Rates</h3>
+                <h3 class="font-title-md text-title-md text-primary font-bold">Daily Seafood Rates</h3>
               </div>
               <button data-nav="daily-rates" class="text-xs text-secondary-marine font-semibold hover:underline">
-                Rate Master →
+                Market Rates →
               </button>
             </div>
 
@@ -366,11 +456,11 @@ export function renderDashboardView() {
                   <div class="flex items-center gap-3 text-right">
                     <div class="flex flex-col">
                       <span class="font-bold text-on-surface tabular-nums">₹${s.gradeA}</span>
-                      <span class="text-[10px] text-outline">Dock / KG</span>
+                      <span class="text-[10px] text-outline">Procure / KG</span>
                     </div>
                     <div class="flex flex-col">
                       <span class="font-bold text-secondary-marine tabular-nums">₹${s.exportRate}</span>
-                      <span class="text-[10px] text-outline">Export / KG</span>
+                      <span class="text-[10px] text-outline">Wholesale / KG</span>
                     </div>
                   </div>
                 </div>

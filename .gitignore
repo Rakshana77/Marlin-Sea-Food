@@ -5,6 +5,11 @@ dist-ssr/
 .DS_Store
 *.log
 .gemini/
+.vercel/
+
+# Mobile PWA
+mobile-pwa/node_modules/
+mobile-pwa/dist/
 
 # Environment files
 .env
@@ -13,3 +18,6 @@ dist-ssr/
 server/.env
 server/.env*.local
 !server/.env.example
+mobile-pwa/.env
+mobile-pwa/.env*.local
+!mobile-pwa/.env.example

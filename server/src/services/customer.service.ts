@@ -51,6 +51,18 @@ export class CustomerService {
     email?: string | null;
     address?: string | null;
   }): Promise<Customer> {
+    const existing = await this.repo.findFirst({
+      mobileNumber: data.mobileNumber
+    });
+
+    if (existing) {
+      throw AppError.conflict(
+        `Customer with mobile number ${data.mobileNumber} already exists (${existing.name})`,
+        'CUSTOMER_ALREADY_EXISTS',
+        { existingCustomer: existing }
+      );
+    }
+
     return this.repo.create({
       name: data.name,
       countryCode: data.countryCode || '+91',

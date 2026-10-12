@@ -53,4 +53,10 @@ export class PurchaseBillController {
     const bill = await service.updatePurchaseBill(req.params.id, req.body, userId);
     return sendSuccess(res, bill);
   }
+
+  public static async cancel(req: Request, res: Response): Promise<Response> {
+    const userId = (req as any).user?.id;
+    const bill = await service.cancelPurchaseBill(req.params.id, userId);
+    return sendSuccess(res, bill);
+  }
 }

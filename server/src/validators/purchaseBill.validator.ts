@@ -26,6 +26,7 @@ export const createPurchaseBillSchema = z.object({
   billDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'billDate must be formatted as YYYY-MM-DD'),
   items: z.array(purchaseBillItemInputSchema).min(1, 'Purchase bill must contain at least one item'),
   discount: decimalValueSchema.optional().default('0.00'),
+  advanceDeducted: decimalValueSchema.optional().default('0.00'),
   payment: z
     .object({
       amount: decimalValueSchema.default('0.00'),

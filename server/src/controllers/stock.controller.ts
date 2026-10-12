@@ -70,4 +70,29 @@ export class StockController {
       totalPages: result.totalPages
     });
   }
+
+  public static async recordWastage(req: Request, res: Response): Promise<Response> {
+    const userId = req.user?.id;
+    const result = await service.recordWastage({
+      ...req.body,
+      userId
+    });
+    return sendSuccess(res, result, 201);
+  }
+
+  public static async recordAdjustment(req: Request, res: Response): Promise<Response> {
+    const userId = req.user?.id;
+    const result = await service.recordAdjustment({
+      ...req.body,
+      userId
+    });
+    return sendSuccess(res, result, 201);
+  }
+
+  public static async getDailyFlow(req: Request, res: Response): Promise<Response> {
+    const date = req.query.date as string | undefined;
+    const result = await service.getDailyFlow(date);
+    return sendSuccess(res, result, 200);
+  }
 }
+

@@ -38,4 +38,11 @@ router.patch(
   PurchaseBillController.update
 );
 
+// 5. Cancel purchase bill with compensating stock reversal & non-negativity guard
+router.post(
+  '/:id/cancel',
+  validateRequest({ params: idParamSchema }),
+  PurchaseBillController.cancel
+);
+
 export const purchaseBillRoutes = router;
